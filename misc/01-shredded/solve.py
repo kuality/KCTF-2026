@@ -36,25 +36,38 @@ N_FRAGMENTS = 410
 # 화이트리스트를 16심볼로 좁히는 것이 정확도의 핵심이다.
 # tesseract 는 화이트리스트 밖으로 답을 낼 수 없으므로, 알파벳이 작을수록
 # 오답 선택지 자체가 사라진다. (base32 2.37% -> safe16 0.10% 문자오독)
-TESS_CFG = f'--psm 7 -c tessedit_char_whitelist={ALPHABET}| '
+def tess_cfg(psm: int) -> str:
+    return f'--psm {psm} -c tessedit_char_whitelist={ALPHABET}| '
 
 LINE_RE = re.compile(
     r'^([%s]{%d})\s*\|\s*([%s]{%d})\s*\|\s*([%s]{%d})$'
     % (ALPHABET, IDX_CHARS, ALPHABET, CHUNK_CHARS, ALPHABET, CHK_CHARS))
 
-# (upscale, blur, threshold_mode, invert_bias)
+# (upscale, blur, threshold_mode, bias, flatten, unsharp, psm)
+#
 # 실측 결과 이진화(otsu/fixed)보다 그레이스케일 그대로가 낫다 — 열화된 스캔에서
 # 이진화는 얇은 획을 끊어버린다. 스윕에는 다양성 확보용으로 남겨둔다.
-PREPROC_DEFAULT = (3, 0.0, "none", 0)
+#
+# flatten(배경 평탄화)이 저대비 조각의 결정타다. 큰 반경 가우시안을 빼서
+# 얼룩진 배경을 제거하고 대비를 재정규화하면, 어떤 전처리로도 안 읽히던
+# 조각들이 살아난다.
+# 아래 조합은 70장 표본으로 변형별 정확도와 합집합을 실측해 고른 것이다.
+#   blur.4 68/70   blur.6+up4 68/70   otsu 68/70   base 67/70
+#   up4 66/70      up5 66/70          flat 52/70   fixed-12 51/70
+#   flat+psm6 46/70
+#   -> 합집합 70/70 (모든 조각이 어떤 변형으로든 읽힌다)
+# 언샤프는 오히려 크게 해로웠고(12/70, 1/70), psm 13 과 fixed+12 는 0/70 이라 뺐다.
+PREPROC_DEFAULT = (3, 0.0, "none", 0, False, 0.0, 7)
 PREPROC_SWEEP = [
-    (3, 0.0, "none", 0),
-    (4, 0.0, "none", 0),
-    (3, 0.4, "none", 0),
-    (5, 0.0, "none", 0),
-    (4, 0.6, "none", 0),
-    (3, 0.0, "otsu", 0),
-    (4, 0.0, "fixed", -12),
-    (4, 0.0, "fixed", +12),
+    (3, 0.0, "none", 0, False, 0.0, 7),
+    (3, 0.4, "none", 0, False, 0.0, 7),
+    (4, 0.6, "none", 0, False, 0.0, 7),
+    (3, 0.0, "otsu", 0, False, 0.0, 7),
+    (4, 0.0, "none", 0, False, 0.0, 7),
+    (5, 0.0, "none", 0, False, 0.0, 7),
+    (3, 0.0, "none", 0, True, 0.0, 7),     # 배경 평탄화
+    (4, 0.0, "fixed", -12, False, 0.0, 7),
+    (3, 0.0, "none", 0, True, 0.0, 6),     # 평탄화 + psm 6
 ]
 
 
@@ -75,14 +88,39 @@ def deskew(img: Image.Image) -> Image.Image:
     return img.rotate(angle, resample=Image.BICUBIC, fillcolor=245)
 
 
+def flatten_bg(img: Image.Image) -> Image.Image:
+    """
+    배경 평탄화. 큰 반경 가우시안(= 배경 추정)을 원본에서 빼면 얼룩·조명 불균일이
+    사라지고, 이어서 대비를 재정규화하면 흐린 획이 되살아난다.
+    저대비 조각을 살리는 가장 효과가 큰 단계다.
+    """
+    from PIL import ImageFilter
+    a = np.asarray(img, dtype=np.float32)
+    bg = np.asarray(img.filter(ImageFilter.GaussianBlur(25)), dtype=np.float32)
+    d = a - bg + 255.0
+    lo, hi = np.percentile(d, 2), np.percentile(d, 98)
+    if hi - lo < 1:
+        return img
+    d = (d - lo) / (hi - lo) * 255.0
+    return Image.fromarray(np.clip(d, 0, 255).astype(np.uint8), "L")
+
+
 def preprocess(path: str, params) -> Image.Image:
-    upscale, blur, mode, bias = params
+    upscale, blur, mode, bias, flat, unsharp, _psm = params
     img = Image.open(path).convert("L")
     img = deskew(img)
+
+    if flat:
+        img = flatten_bg(img)
 
     if blur > 0:
         from PIL import ImageFilter
         img = img.filter(ImageFilter.GaussianBlur(blur))
+
+    if unsharp > 0:
+        from PIL import ImageFilter
+        img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=int(unsharp * 100),
+                                                 threshold=2))
 
     w, h = img.size
     img = img.resize((w * upscale, h * upscale), Image.LANCZOS)
@@ -119,7 +157,7 @@ def checksum_ok(idx: str, data: str, chk: str) -> bool:
 
 def ocr_raw(path: str, params) -> str:
     img = preprocess(path, params)
-    raw = pytesseract.image_to_string(img, config=TESS_CFG).strip()
+    raw = pytesseract.image_to_string(img, config=tess_cfg(params[6])).strip()
     return " ".join(raw.split())
 
 

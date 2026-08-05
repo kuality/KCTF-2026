@@ -37,7 +37,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 # ---------------------------------------------------------------- 설정
 
-FLAG = "KCTF{sh1n_0cr_p1p3l1n3_b34ts_th3_sh4dd3r}"
+FLAG = "KCTF{0cr_p1p3l1n3_b34ts_th3_shr3dd3r}"
 
 SEED = 20260314
 N_FRAGMENTS = 410
@@ -85,7 +85,7 @@ Norite Systems / 문서 파쇄 복원 작업 안내
 
     IDX | DATA | CHK
 
-    IDX   3심볼   조각 번호. 심볼 순서가 곧 숫자 순서다.
+    IDX   3심볼   조각 번호. 0 부터 409 까지 빠짐없이 한 장씩 있다.
     DATA  24심볼  페이로드 조각.
     CHK   3심볼   검증값.
 
@@ -93,13 +93,19 @@ Norite Systems / 문서 파쇄 복원 작업 안내
 
     A B C D E G H K M N O R S W Y 4
 
-즉 심볼 1개가 4비트다. 조각을 IDX 순으로 이어붙이고 이 표대로 되돌리면
-바이트열이 나온다.
+즉 심볼 1개가 4비트다.
+
+여러 심볼로 수를 적을 때는 **큰 자리가 왼쪽** 이다 (IDX, CHK 둘 다 동일).
+
+    값 = 심볼값[0] * 256 + 심볼값[1] * 16 + 심볼값[2]
+
+조각을 IDX 순으로 이어붙이고 DATA 를 이 표대로 되돌리면 바이트열이 나온다.
+심볼 2개가 1바이트이며, 왼쪽 심볼이 상위 4비트다.
 
 CHK 는 IDX 와 DATA 를 이어붙인 27심볼에 대한 12비트 위치 가중 합이다.
 
     total = sum((위치 + 1) * 심볼값)  for 위치, 심볼 in enumerate(IDX + DATA)
-    CHK   = (total & 0xFFF) 를 3심볼로 표기
+    CHK   = (total & 0xFFF) 를 위 규칙대로 3심볼로 표기
 
 파일 이름은 아무 의미 없다. 순서는 IDX 로만 정해진다.
 """
