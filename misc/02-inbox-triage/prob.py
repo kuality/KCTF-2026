@@ -182,8 +182,30 @@ DECOY_FLAGS = [
 
 # ---------------------------------------------------------------- 암호
 
+KDF_ROUNDS = 12_000_000
+
+
+def derive_key(material: str) -> bytes:
+    """
+    반복 해시로 키를 늘린다.
+
+    키 재료가 코퍼스 구조에서 유도되는 한 열거는 원리적으로 막을 수 없다.
+    블라인드 검증에서 확인된 후보 공간은 '어떤 메일의 루트->자신 경로' 600개 x
+    첨부 66개 = 39,600회, 0.07초였다.
+
+    스트레칭은 그 산수를 바꾼다.
+        정직한 경로  후보 1개     x 12M = 1.8초
+        무차별 대입  후보 39,600개 x 12M = 약 20시간
+    즉 '전부 대입한다' 를 '분석해서 후보를 좁힌다' 로 강제한다.
+    """
+    h = material.encode()
+    for _ in range(KDF_ROUNDS):
+        h = hashlib.sha256(h).digest()
+    return h
+
+
 def keystream(key: bytes, n: int) -> bytes:
-    """SHA256 카운터 모드. 순수 파이썬으로 15줄이면 재현된다."""
+    """SHA256 카운터 모드."""
     out = b""
     i = 0
     while len(out) < n:
@@ -192,9 +214,13 @@ def keystream(key: bytes, n: int) -> bytes:
     return out[:n]
 
 
-def encrypt(plain: bytes, key: str) -> bytes:
-    ks = keystream(key.encode(), len(plain))
-    return bytes(a ^ b for a, b in zip(plain, ks))
+def encrypt(plain: bytes, material: str) -> bytes:
+    # 명세와 구현이 반드시 같아야 한다. 초안은 주석에 key = sha256(MATERIAL)
+    # 이라 적어놓고 실제로는 중간 해시 없이 sha256(MATERIAL + i) 를 썼다.
+    # 올바른 체인을 찾은 솔버가 명세대로 구현하면 쓰레기가 나오고, 자기 체인이
+    # 틀린 줄 알게 된다 (블라인드 검증에서 실제로 발생).
+    return bytes(a ^ b for a, b in zip(plain, keystream(derive_key(material),
+                                                        len(plain))))
 
 
 # ---------------------------------------------------------------- 헤더 조립
@@ -233,7 +259,7 @@ class Gen:
 
     def build(self, *, frm, to, subject, body, dt, mid,
               in_reply_to=None, references=None, external_ip=None,
-              spf="pass", attachment=None):
+              spf="pass", attachment=None, spam_score=None):
         m = EmailMessage()
         m["Message-ID"] = mid
         m["Date"] = format_datetime(dt)
@@ -255,7 +281,11 @@ class Gen:
             f"mx.{CORP}; spf={spf} smtp.mailfrom={dom}; "
             f"dkim={'pass' if spf == 'pass' else 'none'}; "
             f"dmarc={'pass' if spf == 'pass' else 'fail'}")
-        m["X-Norite-Spam-Score"] = f"{self.r.uniform(0.0, 3.0):.1f}"
+        # 반드시 다른 메일과 같은 코드 경로로 같은 위치에 넣어야 한다.
+        # 진짜만 나중에 del + 재추가 하면 헤더 순서가 그 메일에서만 달라지고,
+        # 그 한 가지로 600통 중 1통이 특정된다 (블라인드 검증에서 실제로 걸렸다).
+        score = self.r.uniform(0.0, 3.0) if spam_score is None else spam_score
+        m["X-Norite-Spam-Score"] = f"{score:.1f}"
 
         m.set_content(body)
 
@@ -301,13 +331,16 @@ HARVESTER_JS = """\
   // Then "|" then host.
   //
   //   MATERIAL = "<root>,<...>,<parent>" + "|" + host
-  //   key      = sha256(MATERIAL)
+  //   key      = sha256 applied 12000000 times, iteratively:
+  //                h = MATERIAL as ascii bytes
+  //                repeat 12000000 times:  h = sha256(h)
+  //                key = h        (raw 32-byte digest, not hex)
   //
   // (operator note: walk In-Reply-To all the way up. our own In-Reply-To is
   //  mid-thread and the References we send is truncated on purpose, so the
   //  chain is not readable off any single header.)
 
-  // keystream = sha256(key + str(i)) concatenated, i = 0,1,2,...
+  // keystream = sha256(key + str(i)) concatenated, i = 0,1,2,...  (decimal i)
   // plain[j] = blob[j] ^ keystream[j]
   function decode(k){ /* sha256-ctr */ }
 
@@ -336,7 +369,7 @@ var _s="";for(var i=0;i<_c.length;i++){{_s+=String.fromCharCode(_c[i]);}}
     return html.encode()
 
 
-def make_decoy_attachment(g, host: str, mid_local: str, fake_flag=None) -> bytes:
+def make_decoy_attachment(g, host: str, material: str, fake_flag=None) -> bytes:
     """
     미끼 첨부.
 
@@ -350,7 +383,11 @@ def make_decoy_attachment(g, host: str, mid_local: str, fake_flag=None) -> bytes
     """
     r = g.r
     if fake_flag:
-        blob = encrypt(fake_flag.encode(), f"{mid_local}@{host}")
+        # 문서화된 유도 규칙을 이 미끼의 조상 체인에 그대로 적용한 결과다.
+        # 즉 후보 25통에 규칙을 기계적으로 다 돌리면 진짜 1 + 가짜 4 가 나오고,
+        # 어느 것이 진짜인지는 결국 불변식으로 판정해야 한다.
+        # (초안은 미끼 blob 이 순수 난수여서 복호되는 순간 정답이 확정됐다)
+        blob = encrypt(fake_flag.encode(), material)
     else:
         blob = bytes(r.randrange(256) for _ in range(r.randint(28, 48)))
     js = HARVESTER_JS % (host, ",".join(str(b) for b in blob))
@@ -375,7 +412,12 @@ def generate():
         refs = []
         n_msg = r.randint(3, 6)
         for k in range(n_msg):
+            # 답장 순서와 날짜 순서를 일부러 어긋나게 한다.
+            # 그러지 않으면 제목으로 묶고 날짜로 정렬하는 것만으로 조상 체인이
+            # 복원되어, 그래프를 만지지 않고도 키가 조립된다 (1,529회 시도).
             t += timedelta(minutes=r.randint(20, 900))
+            if k and r.random() < 0.45:
+                t -= timedelta(minutes=r.randint(30, 1500))
             sender = members[k % len(members)]
             others = [g.addr(p) for p in members if p != sender]
             mid = g.mid()
@@ -465,16 +507,17 @@ def generate():
     #   나머지  : 단독 메일
     vendor_threads = [th for th in threads if th["external"]]
     internal_pool = [th for th in threads if not th["external"]]
+    decoy_ancestors = {}
     decoy_slots = list(range(65))
     r.shuffle(decoy_slots)
-    fake_slots = set(decoy_slots[:len(DECOY_FLAGS)])
+    # 가짜 플래그는 조상 체인이 있는 미끼(18~41번)에만 싣는다
+    chained = [i for i in decoy_slots if 18 <= i < 42]
+    fake_slots = set(chained[:len(DECOY_FLAGS)])
     for i in range(65):
         t += timedelta(minutes=r.randint(5, 400))
         dom = r.choice(SPAM_DOMAINS)
-        fake = DECOY_FLAGS[decoy_slots.index(i)] if i in fake_slots else None
+        fake = DECOY_FLAGS[chained.index(i)] if i in fake_slots else None
         mid_local = hashlib.sha1(f"spam{i}".encode()).hexdigest()[:16]
-        att = (r.choice(ATT_NAMES),
-               make_decoy_attachment(g, dom, mid_local, fake))
 
         irt = refs_hdr = None
         subj = r.choice(SPAM_SUBJECTS).format(n=r.randint(10000, 99999))
@@ -495,6 +538,7 @@ def generate():
         elif i < 32:
             # 외부 참여자가 이미 있는 벤더 스레드에 매달린 답장
             th = vendor_threads[(i - 18) % len(vendor_threads)]
+            decoy_ancestors[i] = [m for m, _, _ in th["chain"]]
             irt = th["chain"][-1][0]
             subj = "Re: " + th["subject"]
             recipients = th["members"]
@@ -506,11 +550,21 @@ def generate():
             # 처럼 그래프가 전혀 필요 없는 불리언 3개로 진짜가 특정된다.
             # 이 미끼들은 발신 도메인이 사내라서 '외부인' 조건에서 탈락한다.
             th = internal_pool[(i - 32) % len(internal_pool)]
+            decoy_ancestors[i] = [m for m, _, _ in th["chain"]]
             irt = th["chain"][-1][0]
             subj = "Re: " + th["subject"]
             recipients = th["members"]
             refs_hdr = [irt]
             dom = CORP
+
+        # 가짜 플래그는 이 미끼의 조상 체인으로 암호화한다 (규칙은 진짜와 동일).
+        # 체인이 없는 미끼(단독/dangling)에는 가짜 플래그를 싣지 않는다.
+        anc = decoy_ancestors.get(i)
+        if fake and not anc:
+            fake = None
+        att = (r.choice(ATT_NAMES),
+               make_decoy_attachment(
+                   g, dom, (",".join(anc) + "|" + dom) if anc else "", fake))
 
         g.emit(g.build(
             frm=(f'"IT Helpdesk" <helpdesk@{dom}>' if dom == CORP else
@@ -521,7 +575,8 @@ def generate():
             body=(SPAM_BODY_KO if r.random() < 0.55 else SPAM_BODY_EN),
             dt=t, mid=f"<{mid_local}@{dom}>",
             in_reply_to=irt, references=refs_hdr,
-            external_ip=f"192.0.2.{r.randint(2, 250)}",
+            external_ip=f"{r.choice(['192.0.2', '198.51.100', '203.0.113'])}."
+                        f"{r.randint(2, 250)}",
             spf=r.choice(["fail", "fail", "softfail", "pass"]),
             attachment=att))
 
@@ -537,7 +592,8 @@ def generate():
                  "자세한 내용은 포털에서 확인하실 수 있습니다.\n\n감사합니다.\n",
             dt=t, mid=f"<{hashlib.sha1(f'mkt{i}'.encode()).hexdigest()[:16]}"
                       f"@{vaddr.split('@')[1]}>",
-            external_ip=f"198.51.100.{r.randint(2, 250)}",
+            external_ip=f"{r.choice(['192.0.2', '198.51.100', '203.0.113'])}."
+                        f"{r.randint(2, 250)}",
             spf=r.choice(["pass", "softfail", "fail"])))
 
     return g, threads
@@ -605,14 +661,14 @@ def add_hijack(g, threads):
         mid=f"<{hashlib.sha1(b'hijack').hexdigest()[:16]}@{SPOOF}>",
         in_reply_to=parent_mid,
         references=[parent_mid],         # 루트는 담기지 않는다
-        external_ip="203.0.113.201",
+        external_ip=f"{r.choice(['192.0.2', '198.51.100', '203.0.113'])}."
+                    f"{r.randint(2, 250)}",
         # 위조 도메인은 공격자가 소유하므로 그 도메인 기준 SPF 는 통과한다.
         # 현실적이기도 하고, "필터를 통과했으니 깨끗해 보였을 것" 이라는
         # 문제 설명을 참으로 만든다. SPF 로 거르려는 접근은 오히려 손해를 본다.
         spf="pass",
+        spam_score=r.uniform(0.0, 0.6),
         attachment=att)
-    del m["X-Norite-Spam-Score"]
-    m["X-Norite-Spam-Score"] = f"{r.uniform(0.0, 0.6):.1f}"
     g.emit(m)
     return {"key": key, "root_mid": target["chain"][0][0],
             "parent_mid": parent_mid,

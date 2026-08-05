@@ -22,6 +22,7 @@ import json
 import os
 import re
 import sys
+import time
 from collections import Counter
 from datetime import datetime
 
@@ -142,11 +143,14 @@ def solve(root):
         return None
     first_seen = hits[0]["first_seen"]
 
-    print("\n[4] 트래픽 요약에서 해당 시각 세션")
+    print("\n[4] 트래픽 요약에서 C2 도메인 세션")
+    # 시각이 아니라 도메인으로 찾는다. first_seen 은 IOC 등재 시각이지
+    # 유출 세션 시각이 아니다 — 둘을 같게 두면 payload 자기 위의 세션 라인만으로
+    # 키 재료가 조립되어 샌드박스와 CSV 가 통째로 우회된다.
     lines = open(os.path.join(root, "traffic_summary.txt")).read().splitlines()
     payload = None
     for i, ln in enumerate(lines):
-        if ln.startswith(first_seen) and host in ln:
+        if host in ln and "payload" not in ln:
             print(f"      {ln.strip()}")
             m = re.search(r"payload\(b64\):\s*(\S+)", lines[i + 1])
             if m:
@@ -184,10 +188,18 @@ def solve(root):
     tech_str = "".join(tech)
     print(f"      Wave 3 매핑 기법: {tech}  -> {tech_str}")
 
-    material = f"{tech_str}|{host}|{first_seen}"
+    sample_sha = rep["target"]["file"]["sha256"]
+    material = f"{tech_str}|{host}|{first_seen}|{sample_sha}"
     print(f"      MATERIAL = {material}")
 
-    key = hashlib.sha256(material.encode()).digest()
+    # 반복 해시 KDF. 정직한 솔버는 후보가 1개라 0.3초면 끝나지만,
+    # 무차별 대입은 후보가 10^4~10^6 개라 며칠이 된다.
+    t0 = time.time()
+    h = material.encode()
+    for _ in range(12_000_000):
+        h = hashlib.sha256(h).digest()
+    key = h
+    print(f"      KDF 12,000,000회 -> {time.time() - t0:.2f}초")
     cipher = base64.b64decode(payload)
     ks, i = b"", 0
     while len(ks) < len(cipher):

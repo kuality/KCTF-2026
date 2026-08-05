@@ -26,6 +26,7 @@ import hashlib
 import os
 import re
 import sys
+import time
 from collections import defaultdict
 
 CORP = "norite-systems.com"
@@ -179,6 +180,14 @@ def deobfuscate(html: bytes) -> str:
 
 # ------------------------------------------------------------ 복호
 
+def derive_key(material: str) -> bytes:
+    """반복 해시 KDF. 정직한 경로는 후보 1개라 1.8초, 무차별 대입은 약 20시간."""
+    h = material.encode()
+    for _ in range(12_000_000):
+        h = hashlib.sha256(h).digest()
+    return h
+
+
 def keystream(key: bytes, n: int) -> bytes:
     out, i = b"", 0
     while len(out) < n:
@@ -187,8 +196,8 @@ def keystream(key: bytes, n: int) -> bytes:
     return out[:n]
 
 
-def decrypt(blob: bytes, key: str) -> bytes:
-    ks = keystream(key.encode(), len(blob))
+def decrypt(blob: bytes, material: str) -> bytes:
+    ks = keystream(derive_key(material), len(blob))
     return bytes(a ^ b for a, b in zip(blob, ks))
 
 
@@ -244,7 +253,9 @@ def solve(maildir):
         return None
     cipher = bytes(int(x) for x in blob.group(1).split(",") if x.strip())
 
+    t0 = time.time()
     plain = decrypt(cipher, key)
+    print(f"[*] KDF 12,000,000회 -> {time.time() - t0:.2f}초")
     try:
         text = plain.decode()
     except UnicodeDecodeError:

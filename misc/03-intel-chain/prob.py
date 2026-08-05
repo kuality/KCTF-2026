@@ -63,7 +63,14 @@ CAMPAIGN = "BLUEHERON"
 C2_DOMAIN = "cdn-sync.example.net"
 C2_IP = "198.51.100.77"
 VICTIM_IP = "192.0.2.51"
-FIRST_SEEN = datetime(2026, 3, 14, 9, 21, 44, tzinfo=UTC)
+FIRST_SEEN = datetime(2026, 3, 14, 9, 21, 44, tzinfo=UTC)   # IOC 등재 시각 (키 재료)
+# 유출 세션은 다른 시각이다.
+#
+# 초안은 둘이 바이트 단위로 같았다. 그러면 payload 각각에 대해 '자기 바로 위
+# 세션 라인의 도메인 + 타임스탬프' 를 키 재료로 넣고 기법 조합만 돌리면
+# PDF p.5 와 traffic_summary.txt 만으로 1초 안에 뚫린다.
+# 샌드박스도 IOC CSV 도 스캔 페이지도 전부 우회된다. (블라인드 검증 실측)
+EXFIL_TS = datetime(2026, 3, 20, 2, 47, 11, tzinfo=UTC)
 
 # Wave 3 에 매핑된 기법 ID. 표 순서대로 이어붙인다.
 WAVE3_TECHNIQUES = ["T1566", "T1059", "T1071"]
@@ -79,7 +86,6 @@ FIRST_SEEN_STR = FIRST_SEEN.strftime("%Y-%m-%dT%H:%M:%SZ")
 # 기법 문자열만으로 키가 정해지면 페이로드 153개 x 기법 조합 수백 개 =
 # 2만 회 미만의 무차별 대입으로 샌드박스와 CSV 단계를 건너뛸 수 있다.
 # 세 문서를 묶어야 그 경로가 죽고 체인이 실제로 하중을 받는다.
-KEY_MATERIAL = f"{TECH_STRING}|{C2_DOMAIN}|{FIRST_SEEN_STR}"
 
 FONT_MONO = "/System/Library/Fonts/Supplemental/Courier New.ttf"
 FONT_MONO_B = "/System/Library/Fonts/Supplemental/Courier New Bold.ttf"
@@ -95,11 +101,21 @@ WAVES = [
     {"n": 2, "date": "2026-02-02", "hash": sha256_of("w2"),
      "name": "sandbar.dropper.b", "note": "reused wave 1 infrastructure"},
     {"n": 3, "date": "2026-03-11", "hash": sha256_of("w3"),
-     "name": "kelphook.loader", "note": "C2 infrastructure fully rotated"},
+     "name": "kelphook.tideline", "note": "C2 infrastructure fully rotated"},
     {"n": 4, "date": "2026-04-05", "hash": sha256_of("w4"),
-     "name": "kelphook.loader.v2", "note": "persistence module added"},
+     "name": "kelphook.driftwood", "note": "persistence module added"},
 ]
 WAVE3 = WAVES[2]
+
+# 4번째 조각으로 Wave 3 샘플의 SHA256 을 넣는다.
+#
+# 이게 없으면 샌드박스 JSON 이 키 재료에 아무 기여도 하지 않는다. 무차별 대입을
+# 시도하는 솔버는 CSV 도메인 150개 x 기법 조합 63개만 돌리면 되고, 샌드박스는
+# 열어보지도 않는다. 해시를 넣으면 브루트포스조차 샌드박스를 읽어야 한다.
+#
+# 정직한 솔버에게는 부담이 아니다 — 이미 특정한 리포트의 필드를 복사하면 된다
+# (스캔에서 64자 hex 를 OCR 할 필요는 없다).
+KEY_MATERIAL = f"{TECH_STRING}|{C2_DOMAIN}|{FIRST_SEEN_STR}|{WAVE3['hash']}"
 
 ATTACK_TABLE = [
     ("T1566", "Phishing", "1, 3"),
@@ -121,6 +137,29 @@ def keystream(key: bytes, n: int) -> bytes:
     return out[:n]
 
 
+KDF_ROUNDS = 12_000_000
+
+
+def derive_key(material: str) -> bytes:
+    """
+    반복 해시로 키를 늘린다.
+
+    정직한 솔버는 후보가 1개라 0.3초면 끝난다.
+    반면 무차별 대입은 후보가 10^4~10^6 개라 며칠이 걸린다.
+    즉 '전부 대입해 본다' 를 '분석해서 후보를 좁혀야 한다' 로 바꾼다 —
+    KDF 스트레칭의 목적 그대로다.
+
+    실측 (이 환경 기준 약 6.7M hash/s):
+        정직한 경로  후보 1개    x 12M = 1.8초
+        무차별 대입  후보 28,350개 x 12M = 약 14시간
+    (후보 공간 = 기법 조합 63 x CSV 도메인 150 x 샌드박스 해시 3)
+    """
+    h = material.encode()
+    for _ in range(KDF_ROUNDS):
+        h = hashlib.sha256(h).digest()
+    return h
+
+
 def encrypt(plain: bytes, key_material: str) -> bytes:
     # 평문을 3의 배수 길이로 맞춘다.
     # 이렇게 하지 않으면 base64 결과에만 '=' 패딩이 붙어서,
@@ -128,7 +167,7 @@ def encrypt(plain: bytes, key_material: str) -> bytes:
     # (블라인드 검증에서 실제로 걸린 우회다)
     while len(plain) % 3:
         plain += b"\n"
-    key = hashlib.sha256(key_material.encode()).digest()
+    key = derive_key(key_material)
     return bytes(a ^ b for a, b in zip(plain, keystream(key, len(plain))))
 
 
@@ -235,14 +274,18 @@ def build_pdf(path, rng):
         ("Payload Protection", [
             "The wave 3 loader protects exfiltrated data as follows.",
             "",
-            "  key       = SHA256( MATERIAL )   <- the raw 32-byte digest,",
-            "                                    not the 64-char hex string",
+            "  key       = SHA256 applied 12000000 times, iteratively:",
+            "                  h = MATERIAL as ASCII bytes",
+            "                  repeat 12000000 times:  h = SHA256(h)",
+            "                  key = h              <- raw 32-byte digest,",
+            "                                          not a 64-char hex string",
             "  keystream = SHA256( key + str(i) ) concatenated for i = 0,1,2,...",
             "  plain[j]  = cipher[j] XOR keystream[j]",
             "",
-            "MATERIAL is three fields joined with the ASCII pipe character:",
+            "MATERIAL is four fields joined with the ASCII pipe character:",
             "",
             "  MATERIAL = TECH + \"|\" + C2DOMAIN + \"|\" + FIRSTSEEN",
+            "             + \"|\" + SAMPLESHA256",
             "",
             "  TECH       the ATT&CK technique IDs mapped to wave 3 in this",
             "             report, concatenated in the order they appear in the",
@@ -250,7 +293,15 @@ def build_pdf(path, rng):
             "  C2DOMAIN   the C2 domain identified from the sandbox report of",
             "             the wave 3 sample",
             "  FIRSTSEEN  that domain\'s first_seen value from the IOC list,",
-            "             verbatim (e.g. 2026-01-01T00:00:00Z, unquoted)",
+            "             verbatim (e.g. 2026-01-01T00:00:00Z, unquoted).",
+            "             NOTE: this is the IOC registration time. It is NOT the",
+            "             timestamp of the exfiltration session.",
+            "",
+            "  SAMPLESHA  the sha256 field of the wave 3 sample, taken from",
+            "             its sandbox report, lowercase hex",
+            "",
+            "Locate the exfiltration session by the C2 DOMAIN, not by time.",
+            "The domain appears exactly once in the session summary.",
             "",
             "This report does not use sub-technique numbers. Base technique",
             "IDs only.",
@@ -434,7 +485,7 @@ def build_traffic(rng, path, cipher_b64, ioc_entries):
              "# generated 2026-04-16, all addresses are RFC 5737 documentation ranges",
              ""]
     n = 0
-    base = FIRST_SEEN - timedelta(hours=6)
+    base = EXFIL_TS - timedelta(hours=6)
     events = []
 
     # IOC 목록의 도메인 상당수를 트래픽에도 섞는다.
@@ -443,7 +494,8 @@ def build_traffic(rng, path, cipher_b64, ioc_entries):
     # C2 하나만 남는다. 한 줄이면 C2 와 유출 세션이 동시에 나와서 샌드박스 3종과
     # 리포트 p.6 이 통째로 무의미해진다 — 이 문제의 중심 기믹이 증발한다.
     # (블라인드 검증에서 "가장 심각한 구멍" 으로 지목된 항목)
-    ioc_domains = [e[0] for e in ioc_entries if e[1] == "domain"]
+    ioc_domains = [e[0] for e in ioc_entries
+                   if e[1] == "domain" and e[0] != C2_DOMAIN]
     seeded = rng.sample(ioc_domains, min(48, len(ioc_domains)))
     for dom in seeded:
         for _ in range(rng.randint(1, 4)):
@@ -471,7 +523,7 @@ def build_traffic(rng, path, cipher_b64, ioc_entries):
                 for _ in range(rng.randint(10, 22) * 4))
         events.append((ts, src, dst, host, payload))
 
-    events.append((FIRST_SEEN, VICTIM_IP, C2_IP, C2_DOMAIN, cipher_b64))
+    events.append((EXFIL_TS, VICTIM_IP, C2_IP, C2_DOMAIN, cipher_b64))
     events.sort(key=lambda e: e[0])
 
     for ts, src, dst, host, payload in events:
