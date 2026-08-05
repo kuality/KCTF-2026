@@ -53,34 +53,24 @@ def pdf_text(pdf_path):
 
 # ------------------------------------------------------------ 1단계
 
-def wave3_hash(scans, sandbox_hashes):
+def wave3_loader(scans):
     """
-    스캔 페이지에서 Wave 3 행의 SHA256 을 읽는다.
+    스캔 페이지에서 Wave 3 행의 로더 계열명을 읽는다.
 
-    64자를 완벽히 OCR 할 필요는 없다. 샌드박스 리포트가 3개뿐이라
-    앞부분 몇 글자만 맞아도 유일하게 결정된다 — 이게 자기검증 지점이다.
+    조인 키로 SHA256 을 쓰지 않는 이유: 64자 hex 는 OCR 이 0/O, 1/l, 5/S 를
+    계속 틀린다. 4글자씩 끊어 적어도 01dd -> Oldd, 5cfa -> Scfa 로 깨졌다.
+    반면 'kelphook.loader' 같은 단어는 정확히 읽힌다.
+    (문제 1에서 얻은 교훈과 같다 — 화이트리스트/문맥이 있는 토큰이 강하다)
+
+    wave 3 과 wave 4 가 둘 다 kelphook 계열이라, 리포트 서술만으로는 안 되고
+    스캔 페이지의 wave -> loader 매핑을 실제로 읽어야 한다.
     """
-    for pageno, text in scans.items():
-        lines = text.splitlines()
-        for n, ln in enumerate(lines):
-            if not re.match(r"^\s*3\s+\d{4}-\d{2}-\d{2}", ln):
-                continue
-            frag = "".join(re.findall(r"[0-9a-fA-F]{16,}", ln + " " +
-                                      (lines[n + 1] if n + 1 < len(lines) else "")))
-            best = [h for h in sandbox_hashes
-                    if _prefix_score(h, frag.lower()) >= 12]
-            if len(best) == 1:
-                return best[0], frag
-    return None, None
-
-
-def _prefix_score(full, frag):
-    n = 0
-    for a, b in zip(full, frag):
-        if a != b:
-            break
-        n += 1
-    return n
+    for text in scans.values():
+        for ln in text.splitlines():
+            m = re.search(r"wave\s*3\s+\d{4}-\d{2}-\d{2}\s+(\S+)", ln)
+            if m:
+                return m.group(1).strip()
+    return None
 
 
 # ------------------------------------------------------------ 2단계
@@ -118,18 +108,18 @@ def solve(root):
 
     sb_dir = os.path.join(root, "sandbox")
     reports = {}
-    for fn in sorted(os.listdir(sb_dir)):
-        rep = json.load(open(os.path.join(sb_dir, fn)))
-        reports[rep["target"]["file"]["sha256"]] = (fn, rep)
+    for f_ in sorted(os.listdir(sb_dir)):
+        rep = json.load(open(os.path.join(sb_dir, f_)))
+        reports[rep["target"]["file"]["family"]] = (f_, rep)
 
-    sha, frag = wave3_hash(scans, list(reports))
-    if not sha:
-        print("[!] Wave 3 해시를 못 읽었다")
+    loader = wave3_loader(scans)
+    if loader not in reports:
+        print(f"[!] Wave 3 로더를 못 읽었다 (읽은 값: {loader!r})")
         return None
-    print(f"      Wave 3 SHA256 (OCR) : {frag}")
-    print(f"      샌드박스와 일치      : {sha}")
+    print(f"      Wave 3 로더 (OCR) : {loader}")
+    print(f"      샌드박스 후보      : {sorted(reports)}")
 
-    fn, rep = reports[sha]
+    fn, rep = reports[loader]
     print(f"\n[2] 샌드박스 {fn} 에서 C2 식별")
     for d in rep["network"]["domains"]:
         print(f"      {d['domain']:<28} requests={d['requests']}")
@@ -168,11 +158,26 @@ def solve(root):
     print(f"      (전체 payload 라인 {total_payloads}개 중 이 한 줄)")
 
     print("\n[5] ATT&CK 매핑에서 키 재료")
+    # OCR 이 ID 를 흘릴 때를 대비한 정규화. 실제로 T1071 이 T1LO71 로 읽힌 적이 있다.
+    # 기법 이름은 안정적으로 읽히므로 이름을 함께 잡아 검증 근거로 남긴다.
+    def norm_tid(raw):
+        digits = raw[1:].translate(str.maketrans("OolIiSsBb", "001115588"))
+        digits = re.sub(r"\D", "", digits)
+        return "T" + digits[-4:] if len(digits) >= 4 else None
+
+    # ATT&CK 표는 벡터 텍스트 페이지에 있다 (스캔이 아니다).
+    # 출제 단계에서 T1071 의 OCR 정확도가 최선 4/8 로 측정되어, 필수값을
+    # 스캔에 두지 않기로 한 결과다. OCR 은 p.6 의 웨이브->로더 매핑에서 필요하다.
     tech = []
-    for text in scans.values():
-        for tid, waves in re.findall(r"(T\d{4})\s+.*?waves\s+([\d\s]+)", text):
-            if "3" in waves.split():
+    for text in [pdf_text(pdf)] + list(scans.values()):
+        for raw, name, waves in re.findall(
+                r"(T[0-9A-Za-z]{4,6})\s+([A-Za-z][A-Za-z0-9 &]+?)\s+waves\s+([\d\s]+)",
+                text):
+            tid = norm_tid(raw)
+            if tid and "3" in waves.split():
                 tech.append(tid)
+                if tid != raw:
+                    print(f"      OCR 보정: {raw} -> {tid}  ({name.strip()})")
     if not tech:
         print("[!] ATT&CK 표를 못 읽었다")
         return None

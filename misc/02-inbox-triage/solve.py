@@ -10,9 +10,14 @@ KCTF 2026 MISC — inbox-triage / 레퍼런스 솔버
        답장이다 AND 스레드가 내부 전용이다 AND 발신자가 외부다
      (각 조건 단독으로는 후보가 여럿 남는다 — 교집합이 유일하다)
   3) 첨부 난독화 해제 -> 키 유도 방법 확인
-  4) In-Reply-To 를 거슬러 스레드 루트까지 이동
-  5) 키 = <루트 Message-ID 로컬파트> + '@' + <위조 도메인>
+  4) In-Reply-To 를 재귀적으로 거슬러 조상 체인(루트~부모) 전체를 복원
+  5) 키 재료 = 조상 Message-ID 를 ',' 로 이어붙인 것 + '|' + 위조 도메인
   6) SHA256 카운터 모드 키스트림으로 복호 -> 플래그
+
+키가 루트 하나가 아니라 체인 전체인 이유:
+  루트 로컬파트만 쓰면 코퍼스의 Message-ID 600개 x 첨부 66개 = 39,600회 대입이
+  0.1초에 끝난다. 블라인드 검증에서 실측되었고, 의도된 경로보다 싸다.
+  조상 체인 전체는 조합적으로 열거할 수 없다.
 """
 
 import email
@@ -205,21 +210,29 @@ def solve(maildir):
     print(f"      From    : {m['From']}")
     print(f"      Subject : {m['Subject']}")
     print(f"      In-Reply-To : {m['In-Reply-To']}")
-    print(f"      References  : {m['References']}   <- 없다. 루트를 직접 걸어야 한다")
+    print(f"      References  : {m['References']}")
+    print(f"                    ^ 부모 하나뿐이다. 루트는 여기 없다")
 
     spoof = domain_of(m["From"])
     print(f"[*] 위조 도메인: {spoof}  (정상: {CORP})")
 
-    # 스레드 루트까지 거슬러 올라간다
+    # 조상 체인을 루트까지 거슬러 올라간다.
+    # 각 조상의 References 가 직전 부모 하나로 잘려 있어서, 한 번의 조회로는
+    # 체인이 안 나온다. 실제로 재귀적으로 걸어야 한다.
     mid = (m["Message-ID"] or "").strip()
     chain = [mid]
     while chain[-1] in parent:
         chain.append(parent[chain[-1]])
-    print(f"[*] In-Reply-To 체인 {len(chain)}단계 -> 루트 {chain[-1]}")
     assert chain[-1] == root
+    ancestors = list(reversed(chain[1:]))          # 루트 .. 부모
+    print(f"[*] 조상 체인 {len(ancestors)}단계")
+    for a in ancestors:
+        print(f"      {a}")
 
-    root_local = chain[-1].strip("<>").split("@")[0]
-    key = f"{root_local}@{spoof}"
+    # 키 재료 = 조상 Message-ID 전체를 ',' 로 이어붙이고 '|' + 위조 도메인.
+    # 루트 하나만 쓰면 코퍼스의 로컬파트 600개 x 첨부 66개 = 39,600회 대입으로
+    # 0.1초 만에 뚫린다. 체인 전체는 조합적으로 열거할 수 없다.
+    key = ",".join(ancestors) + "|" + spoof
     print(f"[*] 키: {key}")
 
     name, payload = get_attachment(m)

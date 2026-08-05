@@ -122,6 +122,12 @@ def keystream(key: bytes, n: int) -> bytes:
 
 
 def encrypt(plain: bytes, key_material: str) -> bytes:
+    # 평문을 3의 배수 길이로 맞춘다.
+    # 이렇게 하지 않으면 base64 결과에만 '=' 패딩이 붙어서,
+    # payload 라인 153개 중 '='로 끝나는 하나를 grep 하는 것만으로 정답이 잡힌다.
+    # (블라인드 검증에서 실제로 걸린 우회다)
+    while len(plain) % 3:
+        plain += b"\n"
     key = hashlib.sha256(key_material.encode()).digest()
     return bytes(a ^ b for a, b in zip(plain, keystream(key, len(plain))))
 
@@ -229,7 +235,8 @@ def build_pdf(path, rng):
         ("Payload Protection", [
             "The wave 3 loader protects exfiltrated data as follows.",
             "",
-            "  key       = SHA256( MATERIAL )",
+            "  key       = SHA256( MATERIAL )   <- the raw 32-byte digest,",
+            "                                    not the 64-char hex string",
             "  keystream = SHA256( key + str(i) ) concatenated for i = 0,1,2,...",
             "  plain[j]  = cipher[j] XOR keystream[j]",
             "",
@@ -257,11 +264,14 @@ def build_pdf(path, rng):
     # --- p.6 Campaign Timeline (스캔 이미지)
     lines = [(f"{CAMPAIGN} Campaign Timeline", 30, True), ("", 12, False),
              ("Wave  Date        Loader              SHA256", 20, True)]
+    # SHA256 을 4글자씩 끊어 적는다. 64자를 붙여 쓰면 OCR 이 무너진다
+    # (dcdd6->dcdde, 232cc->232cc 류의 오독이 hex 전반에 발생했다).
+    def grp(h):
+        return " ".join(h[i:i + 4] for i in range(0, len(h), 4))
     for w in WAVES:
-        lines.append((f"  {w['n']}   {w['date']}  {w['name']:<20}"
-                      f"{w['hash'][:32]}", 18, False))
-        lines.append((f"                                    {w['hash'][32:]}",
-                      18, False))
+        lines.append((f"  wave {w['n']}   {w['date']}   {w['name']}", 18, False))
+        lines.append((f"        {grp(w['hash'][:32])}", 18, False))
+        lines.append((f"        {grp(w['hash'][32:])}", 18, False))
     lines += [("", 14, False), ("Notes", 20, True)]
     for w in WAVES:
         lines.append((f"  Wave {w['n']}: {w['note']}", 18, False))
@@ -272,34 +282,42 @@ def build_pdf(path, rng):
     c.drawImage(tmp, 0, 0, width=W, height=H)
     c.showPage()
 
-    # --- p.7 ATT&CK 매핑 (스캔 이미지)
-    lines = [("ATT&CK Technique Mapping", 30, True), ("", 12, False),
-             ("Technique  Name                               Mapped waves", 20, True)]
-    # 웨이브 열은 'waves 1 3' 처럼 단어를 앞에 붙여 적는다.
-    # 짧은 토큰만 두면 OCR 이 무너진다 — '1, 3' 은 'AEN)' 로, '[1][3]' 은 '(1) [3]' 로
-    # 읽혔고, 심지어 T1071 이 T1O71(O/0 혼동)로 나왔다.
-    # 'waves' 라는 단어가 문맥을 주면 여섯 행 전부 정확히 읽힌다.
+    # --- p.7 ATT&CK 매핑 (벡터 텍스트)
+    #
+    # 이 표는 스캔으로 두지 않는다. 실측하면 T1071 의 OCR 정확도가 최선 4/8 이다:
+    #     노이즈 4.0/blur0.35/q72   4/8
+    #     노이즈 2.5/blur0.25/q85   3/8
+    #     노이즈 1.5/blur0.15/q92   1/8
+    # 노이즈를 낮춰도 오히려 나빠진다 — 원인은 노이즈가 아니라 'T1071' 렌더링
+    # 자체의 취약성이고, 실제 생성물에서 '2 I 0 ft' 로 완파된 적이 있다.
+    #
+    # 교훈은 로더 이름을 조인 키로 바꿀 때와 같다: **단어는 OCR 을 견디고
+    # 구조화된 영숫자는 못 견딘다.** 그러니 OCR 에 취약한 데이터는 텍스트
+    # 페이지에 두고, 스캔에는 OCR 로 안전하게 읽히는 것(웨이브->로더 매핑)만 남긴다.
+    # 체인에서 OCR 이 필수라는 성질은 p.6 이 그대로 유지한다.
+    head("ATT&CK Technique Mapping", 7)
+    c.setFont("Courier", 10)
+    y = H - 45 * mm
+    c.drawString(20 * mm, y, "Technique   Name                                     Mapped waves")
+    y -= 7 * mm
     for tid, name, waves in ATTACK_TABLE:
-        lines.append((f"  {tid}      {name:<34} waves {waves.replace(', ', ' ')}",
-                      18, False))
-    lines += [("", 14, False),
-              ("Rows are ordered by first observation.", 18, False),
-              ("Sub-technique numbers are not used in this report.", 18, False)]
-
-    img = scan_page(lines, None, rng)
-    tmp7 = os.path.join(DIST, "_p7.png")
-    img.save(tmp7)
-    c.drawImage(tmp7, 0, 0, width=W, height=H)
+        c.drawString(20 * mm, y, f"{tid}       {name:<40} waves {waves.replace(', ', ' ')}")
+        y -= 6 * mm
+    c.setFont("Helvetica", 10)
+    y -= 6 * mm
+    for ln in ["Rows are ordered by first observation.",
+               "Sub-technique numbers are not used in this report."]:
+        c.drawString(20 * mm, y, ln)
+        y -= 5.6 * mm
     c.showPage()
 
     c.save()
     os.remove(tmp)
-    os.remove(tmp7)
 
 
 # ---------------------------------------------------------------- 샌드박스
 
-def sandbox_report(rng, sha, verdict_domains, beacon_domain, rid):
+def sandbox_report(rng, sha, verdict_domains, family, rid):
     """
     Cuckoo 유사 포맷. C2 는 요청 횟수가 아니라 고정 간격 비콘으로 식별된다.
     (요청 횟수만 보면 텔레메트리 도메인이 더 많다 — 함정)
@@ -329,6 +347,11 @@ def sandbox_report(rng, sha, verdict_domains, beacon_domain, rid):
         "analyzer": {"name": "norite-sandbox", "version": "3.4.1"},
         "target": {"file": {
             "name": rng.choice(["invoice_q1.docm", "update.exe", "setup.msi"]),
+            # 로더 계열명. 리포트의 스캔 페이지와 이 필드가 조인 키다.
+            # 64자 hex 는 OCR 이 0/O, 1/l, 5/S 를 계속 틀려서 조인 키로 못 쓴다
+            # (4글자씩 끊어 적어도 01dd->Oldd, 5cfa->Scfa 로 깨졌다).
+            # 문제 1에서 얻은 교훈 그대로 — 단어는 정확히 읽히고 무작위 영숫자는 안 읽힌다.
+            "family": family,
             "size": rng.randint(80000, 400000),
             "md5": hashlib.md5(sha.encode()).hexdigest(),
             "sha1": hashlib.sha1(sha.encode()).hexdigest(),
@@ -371,6 +394,14 @@ def build_iocs(rng, path):
                          ).strftime("%Y-%m-%dT%H:%M:%SZ"),
                         rng.choice(["low", "medium", "high"])))
     entries.append((C2_DOMAIN, "domain", CAMPAIGN, FIRST_SEEN_STR, "high"))
+    # 같은 타임스탬프를 가진 도메인 행을 몇 개 더 둔다.
+    # C2 만 그 시각을 가지면, 유출 세션 시각과 대조하는 것만으로 정답이
+    # 사후 확인되는 공짜 오라클이 된다.
+    for k in range(4):
+        entries.append((f"edge-{rng.randrange(10**5):05x}.example."
+                        f"{rng.choice(['com','net','org'])}", "domain",
+                        rng.choice([CAMPAIGN, "SANDPIPER"]), FIRST_SEEN_STR,
+                        rng.choice(["low", "medium", "high"])))
     for _ in range(140):
         entries.append((
             f"{rng.choice(['api','cdn','mail','vpn','node','edge'])}-"
@@ -395,16 +426,36 @@ def build_iocs(rng, path):
         w = csv.writer(f)
         w.writerow(rows[0])
         w.writerows(entries)
-    return len(entries)
+    return entries
 
 
-def build_traffic(rng, path, cipher_b64):
+def build_traffic(rng, path, cipher_b64, ioc_entries):
     lines = ["# norite netflow / http session summary",
              "# generated 2026-04-16, all addresses are RFC 5737 documentation ranges",
              ""]
     n = 0
     base = FIRST_SEEN - timedelta(hours=6)
     events = []
+
+    # IOC 목록의 도메인 상당수를 트래픽에도 섞는다.
+    #
+    # 이게 없으면 traffic 의 도메인 집합과 iocs.csv 의 지표 집합을 교집합했을 때
+    # C2 하나만 남는다. 한 줄이면 C2 와 유출 세션이 동시에 나와서 샌드박스 3종과
+    # 리포트 p.6 이 통째로 무의미해진다 — 이 문제의 중심 기믹이 증발한다.
+    # (블라인드 검증에서 "가장 심각한 구멍" 으로 지목된 항목)
+    ioc_domains = [e[0] for e in ioc_entries if e[1] == "domain"]
+    seeded = rng.sample(ioc_domains, min(48, len(ioc_domains)))
+    for dom in seeded:
+        for _ in range(rng.randint(1, 4)):
+            ts = base + timedelta(seconds=rng.randint(0, 43200))
+            events.append((ts, f"192.0.2.{rng.randint(2,250)}",
+                           f"{rng.choice(['198.51.100','203.0.113'])}."
+                           f"{rng.randint(2,250)}", dom,
+                           None if rng.random() > 0.10 else "".join(rng.choice(
+                               "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno"
+                               "pqrstuvwxyz0123456789+/")
+                               for _ in range(rng.randint(10, 22) * 4))))
+
     for i in range(2400):
         ts = base + timedelta(seconds=rng.randint(0, 43200))
         src = f"192.0.2.{rng.randint(2,250)}"
@@ -414,9 +465,10 @@ def build_traffic(rng, path, cipher_b64):
                 f"{rng.choice(['com','net','org'])}")
         payload = None
         if rng.random() < 0.06:
+            # 길이를 4의 배수로 두어 진짜와 마찬가지로 '=' 패딩이 없게 한다
             payload = "".join(rng.choice(
                 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
-                for _ in range(rng.randint(40, 90)))
+                for _ in range(rng.randint(10, 22) * 4))
         events.append((ts, src, dst, host, payload))
 
     events.append((FIRST_SEEN, VICTIM_IP, C2_IP, C2_DOMAIN, cipher_b64))
@@ -446,29 +498,29 @@ def main():
 
     # 샌드박스 3종. Wave 3 해시를 가진 것은 하나뿐이다 (자기검증).
     specs = [
-        (WAVES[0]["hash"], [("telemetry.example.com", 31, False),
-                            ("update.example.org", 12, False),
-                            ("static-a.example.net", 47, True)], "0442"),
-        (WAVE3["hash"],    [("telemetry.example.com", 58, False),
-                            ("update.example.org", 9, False),
-                            ("ocsp.example.org", 23, False),
-                            (C2_DOMAIN, 41, True)], "0517"),
-        (WAVES[3]["hash"], [("telemetry.example.com", 44, False),
-                            ("mirror.example.com", 19, False),
-                            ("edge-7.example.net", 38, True)], "0603"),
+        (WAVES[0], [("telemetry.example.com", 31, False),
+                    ("update.example.org", 12, False),
+                    ("static-a.example.net", 47, True)], "0442"),
+        (WAVES[2], [("telemetry.example.com", 58, False),
+                    ("update.example.org", 9, False),
+                    ("ocsp.example.org", 23, False),
+                    (C2_DOMAIN, 41, True)], "0517"),
+        (WAVES[3], [("telemetry.example.com", 44, False),
+                    ("mirror.example.com", 19, False),
+                    ("edge-7.example.net", 38, True)], "0603"),
     ]
-    for sha, doms, rid in specs:
-        rep = sandbox_report(rng, sha, doms, None, rid)
+    for w, doms, rid in specs:
+        rep = sandbox_report(rng, w["hash"], doms, w["name"], rid)
         with open(os.path.join(OUT, "sandbox", f"report_{rid}.json"), "w") as f:
             json.dump(rep, f, indent=2)
 
-    n_ioc = build_iocs(rng, os.path.join(OUT, "iocs.csv"))
+    ioc_entries = build_iocs(rng, os.path.join(OUT, "iocs.csv"))
 
     import base64
     cipher = encrypt(FLAG.encode(), KEY_MATERIAL)
     cipher_b64 = base64.b64encode(cipher).decode()
     n_ev, n_pay = build_traffic(rng, os.path.join(OUT, "traffic_summary.txt"),
-                                cipher_b64)
+                                cipher_b64, ioc_entries)
 
     zip_path = os.path.join(DIST, "intel-chain.zip")
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -478,7 +530,7 @@ def main():
                 zf.write(full, os.path.relpath(full, DIST))
 
     print(f"배포물: {zip_path} ({os.path.getsize(zip_path)/1e6:.1f} MB)")
-    print(f"  IOC 행         : {n_ioc}")
+    print(f"  IOC 행         : {len(ioc_entries)}")
     print(f"  트래픽 이벤트  : {n_ev} (payload 보유 {n_pay})")
     print(f"  Wave3 SHA256   : {WAVE3['hash']}")
     print(f"  C2             : {C2_DOMAIN}  first_seen "
