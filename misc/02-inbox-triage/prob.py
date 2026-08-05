@@ -128,10 +128,23 @@ SPAM_SUBJECTS = [
     "IT Support: mandatory password reset",
 ]
 
+# 첨부 파일명 풀. 진짜가 쓰는 이름이 이 안에 반드시 포함되어야 한다 —
+# 이름이 유일하면 난독화 형태를 통일해도 파일명 하나로 다시 튄다.
+ATT_NAMES = [
+    "VPN_Cert_Renewal.html", "Secure_Document.html", "Invoice_Details.html",
+    "Payroll_Notice.html", "Account_Verification.html", "Mailbox_Upgrade.html",
+    "Password_Reset.html", "Shared_File.html", "Delivery_Notice.html",
+]
+
 SPAM_DOMAINS = [
     "secure-verify.example.com", "mail-update.example.net",
     "account-service.example.org", "notice-center.example.com",
     "id-confirm.example.net", "billing-alert.example.org",
+    # 사내 도메인 유사물도 섞는다. 이게 없으면 첨부 66개의 host 값을 나열했을 때
+    # 사내 도메인처럼 보이는 것이 딱 하나뿐이라, 그래프 분석 없이 진짜가 특정된다.
+    # 여러 개면 '유사 도메인' 만으로는 못 고르고 결국 불변식을 봐야 한다.
+    "norite-systerns.com", "norlte-systems.com", "norite-systems.co",
+    "norite-sytems.com", "n0rite-systems.com",
 ]
 
 # 모델에 통째로 던지는 솔버를 잡기 위한 미끼. 눈으로 보면 가짜인 게 명확해야
@@ -291,25 +304,25 @@ var _s="";for(var i=0;i<_c.length;i++){{_s+=String.fromCharCode(_c[i]);}}
     return html.encode()
 
 
-def make_decoy_attachment(g, idx: int, fake_flag=None) -> bytes:
+def make_decoy_attachment(g, host: str, mid_local: str, fake_flag=None) -> bytes:
+    """
+    미끼 첨부.
+
+    **진짜와 구조가 완전히 같아야 한다.** 초안은 미끼만 eval(atob(...)) 형태였고
+    진짜만 문자코드 배열이라, 첨부 66개를 뽑아 형태만 봐도 1개가 즉시 튀었다.
+    그러면 600통 분류가 통째로 건너뛰어진다.
+
+    미끼도 같은 래퍼, 같은 키 유도 주석, 같은 blob 배열을 갖는다.
+    일부 미끼는 자기 Message-ID 로 유도한 키로 가짜 플래그를 실어둔다 —
+    무차별 대입으로 접근하는 솔버가 가짜를 집게 만든다.
+    """
     r = g.r
-    junk = "".join(r.choice("abcdefghijklmnopqrstuvwxyz0123456789")
-                   for _ in range(r.randint(120, 400)))
-    inner = f'var t="{junk}";document.forms&&document.forms[0]&&' \
-            f'document.forms[0].submit();'
     if fake_flag:
-        inner = f'var note="{fake_flag}";' + inner
-    b64 = base64.b64encode(inner.encode()).decode()
-    html = f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>Secure Document</title></head>
-<body>
-<form method="post" action="https://192.0.2.{r.randint(10,250)}/submit">
-<input type="hidden" name="s" value="{r.randint(10**9, 10**10)}">
-</form>
-<script>eval(atob("{b64}"));</script>
-</body></html>
-"""
-    return html.encode()
+        blob = encrypt(fake_flag.encode(), f"{mid_local}@{host}")
+    else:
+        blob = bytes(r.randrange(256) for _ in range(r.randint(28, 48)))
+    js = HARVESTER_JS % (host, ",".join(str(b) for b in blob))
+    return make_attachment(g, js)
 
 
 # ---------------------------------------------------------------- 코퍼스
@@ -321,7 +334,7 @@ def generate():
     # ---- 내부 스레드
     threads = []          # 각 스레드: [(mid, from_addr, dt), ...]
     t = T0
-    for ti in range(118):
+    for ti in range(88):
         sysname = r.choice(SYSTEMS)
         proj = r.choice(PROJECTS)
         subj = r.choice(THREAD_SUBJECTS).format(sys=sysname, proj=proj)
@@ -413,7 +426,9 @@ def generate():
         dom = r.choice(SPAM_DOMAINS)
         subj = r.choice(SPAM_SUBJECTS).format(n=r.randint(10000, 99999))
         fake = DECOY_FLAGS[decoy_slots.index(i)] if i in fake_slots else None
-        att = ("Secure_Document.html", make_decoy_attachment(g, i, fake))
+        mid_local = hashlib.sha1(f"spam{i}".encode()).hexdigest()[:16]
+        att = (r.choice(ATT_NAMES),
+               make_decoy_attachment(g, dom, mid_local, fake))
         g.emit(g.build(
             frm=f'"{r.choice(["Account Team","IT Support","Billing","Security"])}"'
                 f' <{r.choice(["no-reply","admin","service","alert"])}@{dom}>',
