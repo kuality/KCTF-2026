@@ -36,6 +36,20 @@ KCTF 2026 MISC — inbox-triage
      5통만 가지면 "첨부 있는 메일 찾기" 로 후보가 5개로 줄어 분류 과정이 통째로
      사라진다.
 
+  4. 미끼도 답장이어야 한다. (블라인드 검증에서 드러난 구멍)
+     초안은 첨부 보유 66통 중 In-Reply-To 를 가진 것이 진짜 하나뿐이었다.
+     그래서 그래프를 세울 필요 없이 불리언 두 개로 끝났다:
+         multipart -> 66통,  In-Reply-To 존재 -> 1통
+     지금은 미끼 스팸도 답장 형태를 갖는다.
+       - 존재하지 않는 Message-ID 를 가리키는 것 (dangling)  -> 해석 실패
+       - 외부 참여자가 있는 벤더 스레드에 매달린 것          -> '내부 전용' 탈락
+     각 단계가 후보를 조금씩만 줄이고, 마지막 조건에서야 1통이 된다.
+
+  5. References 누락도 단서가 되면 안 된다.
+     진짜만 References 가 없으면 그 자체가 비명처럼 튄다.
+     정상 답장의 상당수도 직전 부모만 담은 짧은 References 를 갖게 해서
+     진짜의 형태가 특별해 보이지 않도록 한다.
+
   4. 암호는 반복키 XOR 이 아니다.
      평문이 KCTF{ 로 시작하므로 반복키 XOR 은 crib-drag 로 즉사한다.
      SHA256 카운터 모드 키스트림을 쓴다 (순수 파이썬 15줄로 구현 가능,
@@ -347,12 +361,18 @@ def generate():
             sender = members[k % len(members)]
             others = [g.addr(p) for p in members if p != sender]
             mid = g.mid()
+            # 정상 답장의 약 40%는 직전 부모만 담은 짧은 References 를 갖는다.
+            # 진짜 하이재킹 메일의 References 형태가 특별해 보이지 않게 하기 위함.
+            if refs:
+                use_refs = refs[-1:] if r.random() < 0.4 else list(refs)
+            else:
+                use_refs = None
             m = g.build(
                 frm=g.addr(sender), to=others,
                 subject=subj if k == 0 else "Re: " + subj,
                 body=make_body(g, sysname, proj, k), dt=t, mid=mid,
                 in_reply_to=chain[-1][0] if chain else None,
-                references=list(refs) if refs else None)
+                references=use_refs)
             g.emit(m)
             chain.append((mid, g.addr(sender), t))
             refs.append(mid)
@@ -417,28 +437,54 @@ def generate():
             body=make_body(g, sysname, r.choice(PROJECTS), 0),
             dt=t, mid=g.mid()))
 
-    # ---- 명백한 스팸/피싱 (대부분 난독화 첨부 보유)
+    # ---- 명백한 스팸/피싱 (전부 난독화 첨부 보유)
+    #
+    # 상당수가 '답장' 형태를 갖는다. 이게 없으면 In-Reply-To 존재 여부만으로
+    # 진짜가 특정되어 그래프 분석이 통째로 사라진다.
+    #   0~17번  : 존재하지 않는 Message-ID 를 가리킨다 (해석 실패)
+    #   18~31번 : 외부 참여자가 있는 벤더 스레드에 매달린다 ('내부 전용' 탈락)
+    #   나머지  : 단독 메일
+    vendor_threads = [th for th in threads if th["external"]]
     decoy_slots = list(range(65))
     r.shuffle(decoy_slots)
     fake_slots = set(decoy_slots[:len(DECOY_FLAGS)])
     for i in range(65):
         t += timedelta(minutes=r.randint(5, 400))
         dom = r.choice(SPAM_DOMAINS)
-        subj = r.choice(SPAM_SUBJECTS).format(n=r.randint(10000, 99999))
         fake = DECOY_FLAGS[decoy_slots.index(i)] if i in fake_slots else None
         mid_local = hashlib.sha1(f"spam{i}".encode()).hexdigest()[:16]
         att = (r.choice(ATT_NAMES),
                make_decoy_attachment(g, dom, mid_local, fake))
+
+        irt = refs_hdr = None
+        subj = r.choice(SPAM_SUBJECTS).format(n=r.randint(10000, 99999))
+        recipients = [g.addr(r.choice(PEOPLE)).split("<")[1].rstrip(">")]
+
+        if i < 18:
+            # 존재하지 않는 Message-ID 를 가리키는 답장
+            ghost = hashlib.sha1(f"ghost{i}".encode()).hexdigest()[:16]
+            irt = f"<{ghost}@{r.choice(SPAM_DOMAINS)}>"
+            subj = "Re: " + subj
+        elif i < 32:
+            # 외부 참여자가 이미 있는 벤더 스레드에 매달린 답장
+            th = vendor_threads[(i - 18) % len(vendor_threads)]
+            irt = th["chain"][-1][0]
+            subj = "Re: " + th["subject"]
+            recipients = th["members"]
+            if r.random() < 0.5:
+                refs_hdr = [irt]
+
         g.emit(g.build(
             frm=f'"{r.choice(["Account Team","IT Support","Billing","Security"])}"'
                 f' <{r.choice(["no-reply","admin","service","alert"])}@{dom}>',
-            to=[g.addr(r.choice(PEOPLE)).split("<")[1].rstrip(">")],
+            to=recipients,
             subject=subj,
             body="Dear user,\n\nYour immediate action is required. "
                  "Please open the attached document and verify your "
                  "credentials to avoid service interruption.\n\n"
                  "Regards,\nAccount Team\n",
-            dt=t, mid=f"<{hashlib.sha1(f'spam{i}'.encode()).hexdigest()[:16]}@{dom}>",
+            dt=t, mid=f"<{mid_local}@{dom}>",
+            in_reply_to=irt, references=refs_hdr,
             external_ip=f"192.0.2.{r.randint(2, 250)}",
             spf=r.choice(["fail", "fail", "softfail", "pass"]),
             attachment=att))
@@ -468,7 +514,9 @@ def add_hijack(g, threads):
     불변식:
       - 내부 전용 스레드에 답장으로 매달린다
       - 발신자는 그 스레드에 한 번도 없던 외부 도메인이다
-      - References 를 넣지 않는다 -> 루트를 알려면 In-Reply-To 를 거슬러야 한다
+      - References 에 직전 부모만 담는다 -> 루트를 알려면 In-Reply-To 를 거슬러야
+        한다. 아예 빼버리면 '유일하게 References 가 없는 메일' 이 되어 그 자체가
+        단서가 되므로, 정상 답장의 40%도 같은 형태를 갖게 해두었다.
     """
     r = g.r
     # 충분히 깊은 내부 전용 스레드를 고른다 (루트까지 걸어가야 의미가 있다)
@@ -499,7 +547,8 @@ def add_hijack(g, threads):
              "감사합니다.\nIT Helpdesk\n",
         dt=dt,
         mid=f"<{hashlib.sha1(b'hijack').hexdigest()[:16]}@{SPOOF}>",
-        in_reply_to=parent_mid,          # References 는 일부러 넣지 않는다
+        in_reply_to=parent_mid,
+        references=[parent_mid],         # 루트는 담기지 않는다
         external_ip="203.0.113.201",
         spf="fail",
         attachment=att)
