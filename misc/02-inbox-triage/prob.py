@@ -160,15 +160,91 @@ SPAM_DOMAINS = [
     "norite-sytems.com", "n0rite-systems.com",
 ]
 
-# 스팸 본문. 절반 이상을 한글로 둔다 — 미끼가 전부 영문이면
-# '첨부 보유 AND 본문에 한글' 이라는 불리언 두 개로 진짜가 특정된다.
-SPAM_BODY_EN = ("Dear user,\n\nYour immediate action is required. Please open "
-                "the attached document and verify your credentials to avoid "
-                "service interruption.\n\nRegards,\nAccount Team\n")
-SPAM_BODY_KO = ("안녕하세요,\n\n계정 보안 정책 변경에 따라 인증 정보 재확인이 "
-                "필요합니다.\n첨부된 문서를 열어 절차를 완료해 주시기 바랍니다.\n"
-                "기한 내 처리되지 않으면 서비스 이용이 제한될 수 있습니다.\n\n"
-                "감사합니다.\n계정관리팀\n")
+# 스팸 본문.
+#
+# 고정 템플릿 두 개를 65통에 그대로 반복하면 안 된다. 본문으로 군집화했을 때
+# 미끼가 거대한 군집 두 개를 이루고 진짜만 홀로 남아서, '첨부 보유 AND 본문이
+# 반복 템플릿이 아님' 이라는 불리언 두 개로 특정된다.
+# 정상 메일과 마찬가지로 매번 달라지게 조립한다.
+#
+# 진짜가 쓰는 'VPN 인증서 갱신' 구실도 풀에 넣는다. 그러지 않으면 그 키워드
+# 하나로 다시 특정된다.
+SPAM_PRETEXT_KO = [
+    "계정 보안 정책 변경에 따라 인증 정보 재확인이 필요합니다.",
+    "VPN 인증서가 곧 만료됩니다. 갱신 절차를 진행해 주세요.",
+    "미납 청구서가 확인되었습니다. 즉시 확인이 필요합니다.",
+    "비정상 로그인 시도가 감지되어 계정이 일시 잠금되었습니다.",
+    "메일함 용량이 초과되어 수신이 중단될 예정입니다.",
+    "급여 명세 시스템 접근 권한 재확인이 필요합니다.",
+    "공유 문서 열람을 위해 본인 확인이 필요합니다.",
+]
+SPAM_PRETEXT_EN = [
+    "Your account credentials require immediate re-verification.",
+    "Your VPN certificate expires shortly. Please complete renewal.",
+    "An unpaid invoice has been detected on your account.",
+    "Unusual sign-in activity has locked your account.",
+    "Your mailbox has exceeded its storage quota.",
+    "Payroll portal access must be re-confirmed.",
+    "A document has been shared with you and requires sign-in.",
+]
+SPAM_CLOSE_KO = ["감사합니다.", "협조 부탁드립니다.", "빠른 처리 부탁드립니다."]
+SPAM_CLOSE_EN = ["Regards,", "Thank you,", "Sincerely,"]
+SPAM_TEAM_KO = ["계정관리팀", "IT 지원팀", "보안운영팀", "서비스운영팀"]
+SPAM_TEAM_EN = ["Account Team", "IT Support", "Security Operations", "Billing"]
+
+
+# 사내 공지 사칭 본문. 진짜 하이재킹 메일과 **같은 함수** 로 만든다.
+#
+# 진짜만 '사내 업무 답장' 문체이고 나머지 65통이 스팸 블라스트 문체이면,
+# 본문으로 군집화하는 것만으로 66통 중 1통이 특정된다.
+# 사내 주소를 위조한 미끼들도 같은 문체를 쓰게 해서 군집을 채운다.
+INTERNAL_PRETEXT = [
+    ("VPN 인증서 만료 안내", "해당 스레드 참여자분들의 VPN 인증서가 "
+                       "이번 주 {day}요일 만료 예정입니다."),
+    ("계정 정책 변경 안내", "{sys} 접근 계정의 인증 정책이 이번 주 {day}요일부터 "
+                     "변경됩니다."),
+    ("보안 점검 협조 요청", "{sys} 관련 보안 점검이 이번 주 {day}요일 예정되어 "
+                     "있습니다."),
+    ("인증서 재발급 안내", "{sys} 서버 인증서 재발급이 이번 주 {day}요일 "
+                    "진행됩니다."),
+]
+
+
+def make_internal_lure_body(g) -> str:
+    r = g.r
+    title, line = r.choice(INTERNAL_PRETEXT)
+    line = line.format(day=r.choice("월화수목금"), sys=r.choice(SYSTEMS))
+    return "\n".join([
+        "안녕하세요,", "",
+        "말씀 주신 건과 별개로, " + line,
+        "첨부된 " + r.choice(["갱신 도구", "확인 도구", "점검 스크립트"])
+        + "를 실행하시면 자동으로 처리됩니다.",
+        f"문의는 티켓 NS-{r.randint(1000, 9999)} 으로 주시면 됩니다.",
+        "", "감사합니다.", "IT Helpdesk", ""])
+
+
+def make_spam_body(g) -> str:
+    r = g.r
+    ko = r.random() < 0.55
+    pre = r.choice(SPAM_PRETEXT_KO if ko else SPAM_PRETEXT_EN)
+    ref = f"REF-{r.randrange(10**6):06d}"
+    if ko:
+        lines = ["안녕하세요,", "", pre,
+                 "첨부된 문서를 열어 절차를 완료해 주시기 바랍니다.",
+                 f"접수번호는 {ref} 입니다.",
+                 r.choice(["기한 내 처리되지 않으면 서비스 이용이 제한될 수 있습니다.",
+                           "미처리 시 계정이 잠길 수 있습니다.",
+                           "확인은 24시간 이내에 완료되어야 합니다."]),
+                 "", r.choice(SPAM_CLOSE_KO), r.choice(SPAM_TEAM_KO), ""]
+    else:
+        lines = ["Dear user,", "", pre,
+                 "Please open the attached document and complete the process.",
+                 f"Your reference number is {ref}.",
+                 r.choice(["Failure to comply may interrupt your service.",
+                           "Your account may be locked if unverified.",
+                           "This must be completed within 24 hours."]),
+                 "", r.choice(SPAM_CLOSE_EN), r.choice(SPAM_TEAM_EN), ""]
+    return "\n".join(lines)
 
 # 모델에 통째로 던지는 솔버를 잡기 위한 미끼. 눈으로 보면 가짜인 게 명확해야
 # 한다 (스코어보드 스프레이 방지). 자동 요약에는 그럴듯하게 걸린다.
@@ -572,7 +648,8 @@ def generate():
                  f' <{r.choice(["no-reply","admin","service","alert"])}@{dom}>'),
             to=recipients,
             subject=subj,
-            body=(SPAM_BODY_KO if r.random() < 0.55 else SPAM_BODY_EN),
+            body=(make_internal_lure_body(g) if dom == CORP
+                  else make_spam_body(g)),
             dt=t, mid=f"<{mid_local}@{dom}>",
             in_reply_to=irt, references=refs_hdr,
             external_ip=f"{r.choice(['192.0.2', '198.51.100', '203.0.113'])}."
@@ -652,11 +729,7 @@ def add_hijack(g, threads):
         frm=f'"IT Helpdesk" <helpdesk@{SPOOF}>',
         to=target["members"],
         subject="Re: " + target["subject"],
-        body="안녕하세요,\n\n"
-             "말씀 주신 건과 별개로, 해당 스레드 참여자분들의 VPN 인증서가 "
-             "이번 주 금요일 만료 예정입니다.\n"
-             "첨부된 갱신 도구를 실행하시면 자동으로 처리됩니다.\n\n"
-             "감사합니다.\nIT Helpdesk\n",
+        body=make_internal_lure_body(g),
         dt=dt,
         mid=f"<{hashlib.sha1(b'hijack').hexdigest()[:16]}@{SPOOF}>",
         in_reply_to=parent_mid,

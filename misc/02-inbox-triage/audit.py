@@ -17,6 +17,8 @@
 
 import itertools
 import os
+import re
+from collections import Counter
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -76,6 +78,7 @@ def properties(mails, by_mid, parent):
 
 
 def main():
+    global d
     d = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "dist", "inbox-triage", "maildump")
@@ -115,6 +118,59 @@ def main():
             pair_bad.append((a, b))
             print(f"  !! {a}  AND  {b}")
     if not pair_bad:
+        print("  없음")
+
+    # --- 유일값 감사
+    #
+    # 불리언 조합 감사로는 안 잡히는 종류가 따로 있다. 어떤 파생값이 정답에서만
+    # 유일하면 그 값으로 군집화하는 것만으로 정답이 특정된다.
+    # 실제로 두 번 걸렸다:
+    #   - X-Norite-Spam-Score 헤더가 정답에서만 맨 뒤에 직렬화됨 (생성기 버그)
+    #   - 미끼 65통이 고정 템플릿 2개를 반복해 정답 본문만 유일했음
+    print("\n--- 어떤 파생값이 정답에서만 유일한가 ---")
+    raws = {}
+    for fn in sorted(os.listdir(d)):
+        if fn.endswith(".eml"):
+            raws[fn] = open(os.path.join(d, fn), "rb").read()
+
+    def hdr_order(b):
+        head = b.split(b"\n\n")[0]
+        return tuple(l.split(b":")[0] for l in head.split(b"\n")
+                     if re.match(rb"^[A-Za-z-]+:", l))
+
+    derived = {
+        "헤더 키 순서": lambda fn: hdr_order(raws[fn]),
+        "헤더 개수": lambda fn: len(re.findall(rb"^[A-Za-z-]+:", raws[fn], re.M)),
+        "본문 앞 60자": lambda fn: body_text(mails[fn])[:60],
+        "제목": lambda fn: str(mails[fn]["Subject"]),
+        "발신 주소": lambda fn: solve.addr_of(mails[fn]["From"]),
+        "발신 도메인": lambda fn: solve.domain_of(mails[fn]["From"]),
+        "외부 IP 대역": lambda fn: (m.group(1).decode().rsplit(".", 1)[0]
+                                if (m := re.search(rb"\[([\d.]+)\]", raws[fn]))
+                                else ""),
+        "첨부 파일명": lambda fn: next(
+            (p.get_filename() for p in mails[fn].walk() if p.get_filename()), ""),
+        "MIME boundary 길이": lambda fn: len(m.group(1)) if (
+            m := re.search(rb'boundary="([^"]+)"', raws[fn])) else 0,
+        "메일 바이트수": lambda fn: len(raws[fn]),
+        "수신자 수": lambda fn: len(str(mails[fn]["To"] or "").split(",")),
+    }
+    # 전체 600통 기준과 첨부 보유 66통 기준을 모두 본다
+    scopes = {"전체 600통": set(mails), "첨부 보유": {
+        fn for fn, m in mails.items() if m.get_content_maintype() == "multipart"}}
+    # 판정 기준: '정답의 값이 유일한가' 만으로는 부족하다. 본문처럼 원래 전부
+    # 제각각인 필드는 600통이 모두 유일하므로 단서가 되지 않는다.
+    # 진짜 단서는 **정답만 유일한 경우** — 즉 그 필드의 유일값 개수가 아주 적을 때다.
+    unique_hits = []
+    for scope_name, scope in scopes.items():
+        for name, f in derived.items():
+            c = Counter(f(fn) for fn in scope)
+            singletons = sum(1 for v in c.values() if v == 1)
+            if c[f(answer)] == 1 and singletons <= 3 and len(scope) > 1:
+                unique_hits.append((scope_name, name))
+                print(f"  !! [{scope_name}] {name} — 유일값이 {singletons}개뿐이고 "
+                      f"그중 하나가 정답이다")
+    if not unique_hits:
         print("  없음")
 
     print("\n--- 세 속성 조합(AND)으로 1통이 되는가 ---")
