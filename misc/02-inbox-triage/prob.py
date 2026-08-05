@@ -248,11 +248,19 @@ def make_spam_body(g) -> str:
 
 # 모델에 통째로 던지는 솔버를 잡기 위한 미끼. 눈으로 보면 가짜인 게 명확해야
 # 한다 (스코어보드 스프레이 방지). 자동 요약에는 그럴듯하게 걸린다.
+# 미끼 플래그는 **자기가 미끼라고 말하면 안 된다.**
+#
+# 초안은 "keep looking", "d3c0y", "wr0ng_0ne" 이라고 적혀 있어서, 후보를 전부
+# 복호한 솔버가 아무 분석 없이 진짜를 골라냈다. 미끼가 자기를 신고하면
+# 복호 자체가 판별기가 되어버린다.
+# 진짜와 구분되지 않는 문구여야 결국 불변식으로 판정하게 된다.
 DECOY_FLAGS = [
-    "KCTF{th1s_1s_a_d3c0y_keep_looking}",
-    "KCTF{d3c0y_n0t_th3_r34l_fl4g}",
-    "KCTF{wr0ng_0ne_try_th3_gr4ph}",
-    "KCTF{n0t_1t_ch3ck_th3_thr34d}",
+    "KCTF{cr3d_h4rv3st3r_st4g3_tw0}",
+    "KCTF{vpn_c3rt_lur3_d3pl0y3d}",
+    "KCTF{bluef1n_q2_b34c0n_k3y}",
+    "KCTF{h3lpd3sk_sp00f_p4yl0ad}",
+    "KCTF{s3ss10n_c00k13_3xf1l_0k}",
+    "KCTF{m41lb0x_rul3_p3rs1st3nc3}",
 ]
 
 
@@ -589,8 +597,13 @@ def generate():
     # 가짜 플래그는 조상 체인이 있는 미끼(18~41번)에만 싣는다
     chained = [i for i in decoy_slots if 18 <= i < 42]
     fake_slots = set(chained[:len(DECOY_FLAGS)])
+    corpus_end = t
     for i in range(65):
-        t += timedelta(minutes=r.randint(5, 400))
+        # 날짜를 코퍼스 전체 기간에서 뽑는다.
+        # 순차 생성 그대로 두면 미끼 65통이 전부 마지막 달에 몰리고,
+        # 진짜만 다른 달이 되어 Date 정렬 한 번으로 특정된다.
+        t_spam = T0 + timedelta(
+            seconds=r.randint(0, int((corpus_end - T0).total_seconds())))
         dom = r.choice(SPAM_DOMAINS)
         fake = DECOY_FLAGS[chained.index(i)] if i in fake_slots else None
         mid_local = hashlib.sha1(f"spam{i}".encode()).hexdigest()[:16]
@@ -616,6 +629,10 @@ def generate():
             th = vendor_threads[(i - 18) % len(vendor_threads)]
             decoy_ancestors[i] = [m for m, _, _ in th["chain"]]
             irt = th["chain"][-1][0]
+            # 부모 대비 답장 지연을 진짜와 같은 분포로 둔다.
+            # 그러지 않으면 진짜만 '부모 후 3시간', 나머지는 '수십 일 후' 가 되어
+            # 지연 시간 하나로 완벽히 갈린다.
+            t_spam = th["chain"][-1][2] + timedelta(minutes=r.randint(20, 900))
             subj = "Re: " + th["subject"]
             recipients = th["members"]
             if r.random() < 0.5:
@@ -628,6 +645,7 @@ def generate():
             th = internal_pool[(i - 32) % len(internal_pool)]
             decoy_ancestors[i] = [m for m, _, _ in th["chain"]]
             irt = th["chain"][-1][0]
+            t_spam = th["chain"][-1][2] + timedelta(minutes=r.randint(20, 900))
             subj = "Re: " + th["subject"]
             recipients = th["members"]
             refs_hdr = [irt]
@@ -650,7 +668,7 @@ def generate():
             subject=subj,
             body=(make_internal_lure_body(g) if dom == CORP
                   else make_spam_body(g)),
-            dt=t, mid=f"<{mid_local}@{dom}>",
+            dt=t_spam, mid=f"<{mid_local}@{dom}>",
             in_reply_to=irt, references=refs_hdr,
             external_ip=f"{r.choice(['192.0.2', '198.51.100', '203.0.113'])}."
                         f"{r.randint(2, 250)}",
@@ -712,16 +730,29 @@ def add_hijack(g, threads):
 
     # 조상들의 References 를 직전 부모 하나로 잘라둔다.
     # 그러지 않으면 부모의 References[0] 이 곧 루트라서, 재귀 없이 한 번의
-    # 조회로 체인이 통째로 드러난다 (블라인드 검증에서 지목된 우회 B).
+    # 조회로 체인이 통째로 드러난다.
+    #
+    # 중요: 이 후처리(del + 재추가)는 헤더를 맨 뒤로 밀어낸다. 하이재킹 스레드에만
+    # 적용하면 600통 중 4통만 References 가 MIME-Version 뒤에 오게 되고,
+    # 그 4통이 곧 정답의 스레드다 — grep 한 줄로 끝난다.
+    # (스팸점수 헤더에서 똑같은 실수를 이미 한 번 했다)
+    # 그래서 전체 스레드의 18% 에도 같은 후처리를 적용한다.
     by_mid = {mid: m for mid, m in g.mails}
-    prev = None
-    for mid, _, _ in target["chain"]:
-        m_ = by_mid.get(mid)
-        if m_ is not None and m_["References"]:
-            del m_["References"]
-            if prev:
-                m_["References"] = prev
-        prev = mid
+
+    def truncate_refs(chain):
+        prev = None
+        for mid, _, _ in chain:
+            m_ = by_mid.get(mid)
+            if m_ is not None and m_["References"]:
+                del m_["References"]
+                if prev:
+                    m_["References"] = prev
+            prev = mid
+
+    truncate_refs(target["chain"])
+    for th in threads:
+        if th is not target and r.random() < 0.18:
+            truncate_refs(th["chain"])
     att = ("VPN_Cert_Renewal.html", make_attachment(g, js))
 
     dt = target["chain"][-1][2] + timedelta(minutes=37)

@@ -91,6 +91,12 @@ FONT_MONO = "/System/Library/Fonts/Supplemental/Courier New.ttf"
 FONT_MONO_B = "/System/Library/Fonts/Supplemental/Courier New Bold.ttf"
 
 
+def rand_ts(rng) -> str:
+    return (FIRST_SEEN + timedelta(days=rng.randint(-90, 90),
+                                   seconds=rng.randint(0, 86399))
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def sha256_of(tag: str) -> str:
     return hashlib.sha256(f"{CAMPAIGN}-{tag}-{SEED}".encode()).hexdigest()
 
@@ -314,15 +320,17 @@ def build_pdf(path, rng):
 
     # --- p.6 Campaign Timeline (스캔 이미지)
     lines = [(f"{CAMPAIGN} Campaign Timeline", 30, True), ("", 12, False),
-             ("Wave  Date        Loader              SHA256", 20, True)]
-    # SHA256 을 4글자씩 끊어 적는다. 64자를 붙여 쓰면 OCR 이 무너진다
-    # (dcdd6->dcdde, 232cc->232cc 류의 오독이 hex 전반에 발생했다).
-    def grp(h):
-        return " ".join(h[i:i + 4] for i in range(0, len(h), 4))
+             ("Wave    Date         Loader family", 20, True)]
+    # 스캔에는 SHA256 을 싣지 않는다.
+    #
+    # 두 가지 이유가 있다.
+    #  1) hex 는 OCR 로 못 읽는다. 4글자씩 끊어 적어도 01dd->Oldd, 5cfa->Scfa,
+    #     f0c1->f0cl 로 깨진다. 비전 없이 푸는 플레이어를 이유 없이 벌주는 셈이다.
+    #  2) 스캔에도 해시가 있으면 샌드박스를 안 열고도 키 재료를 완성할 수 있다.
+    #     해시가 샌드박스에만 있으면 무차별 대입조차 샌드박스를 읽어야 한다.
+    # 스캔에는 OCR 로 확실히 읽히는 것(웨이브 -> 로더 계열 매핑)만 남긴다.
     for w in WAVES:
-        lines.append((f"  wave {w['n']}   {w['date']}   {w['name']}", 18, False))
-        lines.append((f"        {grp(w['hash'][:32])}", 18, False))
-        lines.append((f"        {grp(w['hash'][32:])}", 18, False))
+        lines.append((f"  wave {w['n']}   {w['date']}   {w['name']}", 20, False))
     lines += [("", 14, False), ("Notes", 20, True)]
     for w in WAVES:
         lines.append((f"  Wave {w['n']}: {w['note']}", 18, False))
@@ -431,46 +439,64 @@ def sandbox_report(rng, sha, verdict_domains, family, rid):
 
 # ---------------------------------------------------------------- 산출물
 
-def build_iocs(rng, path):
+# 사람이 지을 법한 인프라 도메인 이름 풀.
+#
+# 초안은 잡음 도메인 144개가 전부 'api-1a2b3.example.com' 같은 생성기 템플릿이라,
+# 그 템플릿에 안 맞는 6개(= C2 와 유사 도메인들)를 정규식 한 줄로 뽑아낼 수 있었다.
+# 미끼가 미끼처럼 생기면 미끼가 아니다.
+IOC_WORDS_A = ["cdn", "api", "mail", "vpn", "node", "edge", "ocsp", "mirror",
+               "static", "update", "telemetry", "sync", "auth", "relay",
+               "proxy", "cache", "assets", "media", "push", "log"]
+IOC_WORDS_B = ["sync", "gw", "eu", "us", "r3", "prod", "cdn", "net", "svc",
+               "core", "edge", "01", "02", "ha", "alt", "backup", "live"]
+
+
+def ioc_name(rng):
+    return (f"{rng.choice(IOC_WORDS_A)}-{rng.choice(IOC_WORDS_B)}"
+            f"{rng.choice(['', '', '2', '3', 'x'])}.example."
+            f"{rng.choice(['com', 'net', 'org'])}")
+
+
+def build_iocs(rng, path, sandbox_domains):
     rows = [("indicator", "type", "campaign", "first_seen", "confidence")]
+    # (c) 날짜만 흔들고 시:분:초를 재사용하면 09:21:44 가 59번 등장해서
+    #     오히려 정답 시각이 표시된다. 초 단위까지 완전 무작위로 만든다.
     noise_domains = [
         "cdn-sync.example.org", "cdn-sync2.example.net", "cdn-synk.example.net",
         "cdn-sync.example.com", "sync-cdn.example.net",
     ]
     entries = []
     for d in noise_domains:
-        entries.append((d, "domain", CAMPAIGN,
-                        (FIRST_SEEN + timedelta(days=rng.randint(-40, 40),
-                                                seconds=rng.randint(0, 86400))
-                         ).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        entries.append((d, "domain", CAMPAIGN, rand_ts(rng),
                         rng.choice(["low", "medium", "high"])))
     entries.append((C2_DOMAIN, "domain", CAMPAIGN, FIRST_SEEN_STR, "high"))
-    # 같은 타임스탬프를 가진 도메인 행을 몇 개 더 둔다.
-    # C2 만 그 시각을 가지면, 유출 세션 시각과 대조하는 것만으로 정답이
-    # 사후 확인되는 공짜 오라클이 된다.
-    for k in range(4):
-        entries.append((f"edge-{rng.randrange(10**5):05x}.example."
-                        f"{rng.choice(['com','net','org'])}", "domain",
-                        rng.choice([CAMPAIGN, "SANDPIPER"]), FIRST_SEEN_STR,
+
+    # (a) 샌드박스에 등장하는 나머지 도메인도 전부 IOC 에 넣는다.
+    #     그러지 않으면 '샌드박스 도메인 목록 ∩ IOC 목록' 이 정확히 1개가 되어,
+    #     comm 한 번으로 C2 / first_seen / 유출 세션 / wave3 샘플이 한꺼번에
+    #     드러난다. 비콘 분석도 스캔 페이지도 통째로 우회된다.
+    for dom in sandbox_domains:
+        if dom == C2_DOMAIN:
+            continue
+        entries.append((dom, "domain", rng.choice([CAMPAIGN, "SANDPIPER"]),
+                        rand_ts(rng), rng.choice(["low", "medium", "high"])))
+
+    seen_names = {e[0] for e in entries}
+    while len(entries) < 190:
+        n = ioc_name(rng)
+        if n in seen_names:
+            continue
+        seen_names.add(n)
+        entries.append((n, "domain",
+                        rng.choice([CAMPAIGN, "SANDPIPER", "MERLIN"]),
+                        rand_ts(rng),
                         rng.choice(["low", "medium", "high"])))
-    for _ in range(140):
-        entries.append((
-            f"{rng.choice(['api','cdn','mail','vpn','node','edge'])}-"
-            f"{rng.randrange(10**5):05x}.example."
-            f"{rng.choice(['com','net','org'])}",
-            "domain", rng.choice([CAMPAIGN, "SANDPIPER", "MERLIN"]),
-            (FIRST_SEEN + timedelta(days=rng.randint(-90, 90),
-                                    seconds=rng.randint(0, 86400))
-             ).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            rng.choice(["low", "medium", "high"])))
     for _ in range(54):
         entries.append((
             f"{rng.choice(['192.0.2','198.51.100','203.0.113'])}."
             f"{rng.randint(2,250)}", "ipv4",
             rng.choice([CAMPAIGN, "SANDPIPER", "MERLIN"]),
-            (FIRST_SEEN + timedelta(days=rng.randint(-90, 90))
-             ).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            rng.choice(["low", "medium", "high"])))
+            rand_ts(rng), rng.choice(["low", "medium", "high"])))
     rng.shuffle(entries)
 
     with open(path, "w", newline="") as f:
@@ -480,7 +506,7 @@ def build_iocs(rng, path):
     return entries
 
 
-def build_traffic(rng, path, cipher_b64, ioc_entries):
+def build_traffic(rng, path, cipher_b64, ioc_entries, decoy_payloads=()):
     lines = ["# norite netflow / http session summary",
              "# generated 2026-04-16, all addresses are RFC 5737 documentation ranges",
              ""]
@@ -524,6 +550,10 @@ def build_traffic(rng, path, cipher_b64, ioc_entries):
         events.append((ts, src, dst, host, payload))
 
     events.append((EXFIL_TS, VICTIM_IP, C2_IP, C2_DOMAIN, cipher_b64))
+    for dom, pay in decoy_payloads:
+        events.append((base + timedelta(seconds=rng.randint(0, 43200)),
+                       f"192.0.2.{rng.randint(2,250)}",
+                       f"198.51.100.{rng.randint(2,250)}", dom, pay))
     events.sort(key=lambda e: e[0])
 
     for ts, src, dst, host, payload in events:
@@ -566,13 +596,35 @@ def main():
         with open(os.path.join(OUT, "sandbox", f"report_{rid}.json"), "w") as f:
             json.dump(rep, f, indent=2)
 
-    ioc_entries = build_iocs(rng, os.path.join(OUT, "iocs.csv"))
+    sandbox_domains = sorted({d for _, doms, _ in specs for d, _, _ in doms})
+    ioc_entries = build_iocs(rng, os.path.join(OUT, "iocs.csv"), sandbox_domains)
 
     import base64
     cipher = encrypt(FLAG.encode(), KEY_MATERIAL)
     cipher_b64 = base64.b64encode(cipher).decode()
+
+    # 근접 오답 키로 암호화한 미끼 페이로드.
+    #
+    # 무차별 대입은 후보 공간이 CSV 도메인 수로 묶여 있어 원리적으로 막을 수 없다.
+    # 대신 **대입에 성공해도 답이 하나로 안 좁혀지게** 만든다. 유사 도메인과
+    # 그 first_seen 으로 만든 키에서도 그럴듯한 플래그가 나오면, 결국 비콘 분석과
+    # 정확 문자열 일치로 판정해야 한다.
+    decoy_specs = [
+        ("cdn-sync.example.org", "KCTF{b34c0n_k3y_r3c0v3r3d_w4v3_tw0}"),
+        ("cdn-sync2.example.net", "KCTF{bluh3r0n_st4g3r_c0nf1g_dump}"),
+        ("cdn-sync.example.com", "KCTF{c2_ch4nn3l_k3y_n0t_r0t4t3d}"),
+        ("sync-cdn.example.net", "KCTF{3xf1l_bl0b_p4rt14l_r3c0v3ry}"),
+    ]
+    fs_by_dom = {e[0]: e[3] for e in ioc_entries}
+    decoy_payloads = []
+    for dom, fake in decoy_specs:
+        if dom not in fs_by_dom:
+            continue
+        mat = f"{TECH_STRING}|{dom}|{fs_by_dom[dom]}|{WAVE3['hash']}"
+        decoy_payloads.append(
+            (dom, base64.b64encode(encrypt(fake.encode(), mat)).decode()))
     n_ev, n_pay = build_traffic(rng, os.path.join(OUT, "traffic_summary.txt"),
-                                cipher_b64, ioc_entries)
+                                cipher_b64, ioc_entries, decoy_payloads)
 
     zip_path = os.path.join(DIST, "intel-chain.zip")
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
