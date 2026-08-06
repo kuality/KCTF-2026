@@ -409,20 +409,15 @@ HARVESTER_JS = """\
   var host = "%s";
   var blob = [%s];
 
-  // beacon key material = EVERY Message-ID on this message's ancestor chain,
-  // ROOT FIRST, ending with the message we replied to. Each id exactly as it
-  // appears in the header, angle brackets included, joined with ",".
-  // Then "|" then host.
+  // beacon key material = the thread we grafted onto, as a "," joined list of
+  // its Message-IDs (each exactly as in the header, angle brackets included),
+  // then "|" then host.
   //
-  //   MATERIAL = "<root>,<...>,<parent>" + "|" + host
+  //   MATERIAL = "<id>,<id>,...,<id>" + "|" + host
   //   key      = sha256 applied 12000000 times, iteratively:
   //                h = MATERIAL as ascii bytes
   //                repeat 12000000 times:  h = sha256(h)
   //                key = h        (raw 32-byte digest, not hex)
-  //
-  // (operator note: walk In-Reply-To all the way up. our own In-Reply-To is
-  //  mid-thread and the References we send is truncated on purpose, so the
-  //  chain is not readable off any single header.)
 
   // keystream = sha256(key + str(i)) concatenated, i = 0,1,2,...  (decimal i)
   // plain[j] = blob[j] ^ keystream[j]
@@ -660,6 +655,21 @@ def generate():
                make_decoy_attachment(
                    g, dom, (",".join(anc) + "|" + dom) if anc else "", fake))
 
+        # 가짜 플래그를 실은 미끼는 반드시 '스팸 필터가 잡는' 상태여야 한다.
+        #
+        # 규칙을 66통에 전수 복호하면 진짜 1 + 가짜 플래그 미끼가 함께 나온다.
+        # 이때 미끼가 우연히 인증 통과 + 낮은 스팸이면, 진짜와 구분할 objective
+        # 판별자가 사라져 최종 1통을 찍게 된다 (블라인드 검증에서 tie 발생).
+        # 진짜만 spf=pass + 낮은 스팸이 되도록, 가짜 미끼는 spf=fail + 높은 스팸.
+        # (사내 주소 스푸핑인데 spf=fail 은 현실적인 침해 징후이기도 하다)
+        # 그래도 진짜를 특정하려면 결국 그래프 불변식이 필요하다 —
+        # 이 장치는 '전수 복호' 근사 경로에서 가짜를 걸러줄 뿐이다.
+        if fake:
+            decoy_spf, decoy_spam = "fail", r.uniform(2.2, 3.0)
+        else:
+            decoy_spf, decoy_spam = r.choice(
+                ["fail", "fail", "softfail", "pass"]), None
+
         g.emit(g.build(
             frm=(f'"IT Helpdesk" <helpdesk@{dom}>' if dom == CORP else
                  f'"{r.choice(["Account Team","IT Support","Billing","Security"])}"'
@@ -672,7 +682,7 @@ def generate():
             in_reply_to=irt, references=refs_hdr,
             external_ip=f"{r.choice(['192.0.2', '198.51.100', '203.0.113'])}."
                         f"{r.randint(2, 250)}",
-            spf=r.choice(["fail", "fail", "softfail", "pass"]),
+            spf=decoy_spf, spam_score=decoy_spam,
             attachment=att))
 
     # ---- 회색지대: 외부 마케팅/벤더 단독 메일

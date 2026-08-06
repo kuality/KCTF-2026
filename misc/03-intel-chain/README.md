@@ -78,9 +78,16 @@ cdn-sync.example.net         requests=41   <- C2
 
 **요청 수 1위가 C2 가 아니다.** 리포트가 명시적으로 경고한다:
 
-> *"Do NOT rank by request count. Telemetry and update endpoints frequently generate more requests than the C2 does. The discriminator is the fixed-interval beacon pattern in the HTTP timestamps."*
+> *"request volume alone is a poor indicator of C2 activity; benign telemetry and update endpoints are frequently the noisiest hosts."*
 
-`network.http` 타임스탬프를 보면 `cdn-sync.example.net` 만 **60초 고정 간격 비콘 41회**다.
+리포트는 **정답을 알려주지 않는다** — "요청수가 지표가 아니다" 라고만 경고한다.
+플레이어가 스스로 판별 방법을 찾아야 한다. `network.http` 타임스탬프를 보면
+`cdn-sync.example.net` 만 **60초 고정 간격 비콘 41회**로, 나머지는 산발적이다.
+
+세 신호가 독립적으로 수렴한다 (블라인드 검증에서 확인):
+- 캠페인 라벨: `update`/`ocsp` 는 IOC 에서 SANDPIPER 라벨 → 제외
+- 트래픽 존재: 샌드박스 4개 도메인 중 트래픽에 세션이 있는 건 C2 하나뿐
+- 고정 간격 비콘
 
 ### 3. IOC CSV 에서 first_seen
 
