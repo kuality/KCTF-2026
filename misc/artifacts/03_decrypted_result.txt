@@ -1,0 +1,23 @@
+intel-chain — 교차 상관분석 결과물
+====================================
+
+네 문서에서 각각 한 조각씩 뽑아 조립한다 (어느 하나만으로는 안 나온다):
+
+  [리포트 PDF, 스캔 p.6 OCR]  wave 3 로더 계열  = kelphook.tideline
+  [샌드박스 report_0517.json] C2 도메인          = cdn-sync.example.net
+                             (요청수 1위 telemetry(58) 가 아니라
+                              60초 고정 간격 비콘 41회로 식별)
+  [IOC iocs.csv, 정확 일치]   first_seen        = 2026-03-14T09:21:44Z
+  [샌드박스 report_0517.json] 샘플 SHA256        = 50455be67b57b36429a4209a50c2f0c1
+                                                  980c01dd044f5cfab1f3dcbd250d133e
+  [리포트 PDF p.7 벡터텍스트] wave3 ATT&CK 기법  = T1566, T1059, T1071
+
+조립:
+
+  MATERIAL = T1566T1059T1071|cdn-sync.example.net|2026-03-14T09:21:44Z|50455be6...250d133e
+  key      = SHA256 를 12,000,000 회 반복
+  keystream= SHA256(key + str(i)) 이어붙임,  plain = cipher XOR keystream
+
+[트래픽 traffic_summary.txt] 의 C2 세션 페이로드를 위 키로 복호한 결과:
+
+  KCTF{cr0ss_d0c_c0rr3l4t10n_1s_th3_j0b}
