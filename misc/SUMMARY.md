@@ -9,9 +9,11 @@
 
 | # | 문제 | 난이도 | 시연 능력 | 플래그 |
 |---|------|--------|-----------|--------|
-| 1 | shredded | LOW | Vision / OCR | `KCTF{0cr_p1p3l1n3_b34ts_th3_shr3dd3r}` |
+| 1 | shredded | LOW–MEDIUM | Vision / OCR | `KCTF{0cr_p1p3l1n3_b34ts_th3_shr3dd3r}` |
 | 2 | inbox-triage | MEDIUM | 구조 기반 트리아지 | `KCTF{thr34d_h1j4ck_h1d3s_1n_th3_gr4ph}` |
 | 3 | intel-chain | MEDIUM | 문서 교차 상관분석 (TI) | `KCTF{cr0ss_d0c_c0rr3l4t10n_1s_th3_j0b}` |
+| 4 | canary-index | LOW–MEDIUM | 바꿔 쓴 HUMINT 유출문 의미 대조 | `KCTF{c4n4ry_m4tch_782992d2c39953d39ab94a74}` |
+| 5 | alias-chain | LOW–MEDIUM | 플랫폼 간 온라인 별명 연결 | `KCTF{4l14s_ch41n_0dff2f984c5429eeca69c499}` |
 
 카테고리 컨셉: **"AI로 보안에서 이런 것도 가능하다."** AI는 정답을 알려주는 오라클이
 아니라, 사람이 손으로는 못 할 대량 작업을 처리하는 도구로 쓰인다.
@@ -22,15 +24,19 @@
 
 | # | 파일 | 크기 | 구성 | SHA-256 |
 |---|------|------|------|---------|
-| 1 | `01-shredded/dist/shredded.zip` | 31 MB | 조각 PNG 410 + NOTES.txt | `867d526c2e2b1f59…` |
-| 2 | `02-inbox-triage/dist/inbox-triage.zip` | 0.6 MB | `.eml` 600 | `f7f2f27ac5730b31…` |
+| 1 | `01-shredded/dist/shredded.zip` | 31 MB | 조각 PNG 410 + NOTES.txt | `d2817e59c4bf09ef…` |
+| 2 | `02-inbox-triage/dist/inbox-triage.zip` | 0.6 MB | INCIDENT_BRIEF.txt + `.eml` 600 | `612288b1ede9e882…` |
 | 3 | `03-intel-chain/dist/intel-chain.zip` | 1.1 MB | PDF + 샌드박스 JSON 3 + IOC CSV + 트래픽 | `83fe853f70d147e6…` |
+| 4 | `04-canary-index/dist/canary-index.zip` | 824 KB | 브리핑 972 + 유출문 12 | `fbd0fc6d6de40b1…` |
+| 5 | `05-alias-chain/dist/alias-chain.zip` | 148 KB | 플랫폼 아카이브 5종, 프로필 135 | `7e7f1ffa72a9ef18…` |
 
 전체 해시:
 ```
-867d526c2e2b1f59f20fd8659a2c877f9bba9227404d7d9c05a4cd8c49c32246  shredded.zip
-f7f2f27ac5730b31ea1c93999f9d1a389515d55ab7d2c451e3ac61203f6bc9ec  inbox-triage.zip
+d2817e59c4bf09efd35b7ef178aa5635c18aee2d6974344ef50c70bc51dc622d  shredded.zip
+612288b1ede9e882bcb898a5b32ca0655b40a4220e8be898e260319efe2ad447  inbox-triage.zip
 83fe853f70d147e66c9b849083d557d87aa96ba34fe89f410b20463eca837175  intel-chain.zip
+fbd0fc6d6de40b16fa4091ef87b6d8c404916e963cc00c271783f07ca2df43ab  canary-index.zip
+7e7f1ffa72a9ef18b5a89fe980416ddc863ea3d84ba4758b068325faf955ee37  alias-chain.zip
 ```
 
 > ZIP 은 파일 mtime 을 저장하므로, 생성기를 다시 돌리면 **내용은 같아도 zip 해시는
@@ -42,11 +48,13 @@ f7f2f27ac5730b31ea1c93999f9d1a389515d55ab7d2c451e3ac61203f6bc9ec  inbox-triage.z
 
 ### 1. shredded
 - 조각을 전처리 후 OCR → 체크섬으로 실패 조각만 국소화 → 스윕 재시도 →
-  **남은 1장은 눈으로 판독** → 정렬·16심볼 디코드·ZIP 복원.
-- 자기검증 4단: 체크섬 → 인덱스 무결성 → ZIP magic → CRC.
-- 레퍼런스 솔버: `01-shredded/solve.py`, 약 6초.
+  **남은 2장은 눈으로 판독** → 정렬·16심볼 디코드·ZIP 복원.
+- 자기검증 5단: 체크섬 → 인덱스 무결성 → ZIP magic/CRC → 전체 prefix SHA-256 → HMAC 기반 트레일러 인증.
+- 레퍼런스 솔버: `01-shredded/solve.py`, 약 7초.
 
 ### 2. inbox-triage
+- `INCIDENT_BRIEF.txt`가 기존 내부 업무 대화에 외부 발신자로 끼어들고 필터를 통과한
+  한 통이라는 목표를 배포물 안에서도 보존한다.
 - 첨부 보유 66통 → Message-ID 그래프 → 구조 불변식으로 진짜 1통:
   **답장 AND 스레드 내부 전용 AND 발신자 외부**.
 - 발신 도메인은 호모글리프 `norite-systerns.com` (rn≠m).
@@ -60,17 +68,30 @@ f7f2f27ac5730b31ea1c93999f9d1a389515d55ab7d2c451e3ac61203f6bc9ec  inbox-triage.z
 - `MATERIAL = TECH|C2도메인|first_seen|샘플SHA256`, SHA256 1,200만 회 KDF.
 - 레퍼런스 솔버: `03-intel-chain/solve.py`, 약 3초.
 
+### 4. canary-index
+- 유출문 12개의 호출명·장소·시각·차량을 의미 단위로 정규화한다.
+- 브리핑 972개에서 네 사실이 모두 맞는 유일한 `BRIEFING-ID`를 순서대로 얻는다.
+- ASCII ID를 `|`로 연결하고 SHA-256 앞 24글자로 플래그를 계산한다.
+- 레퍼런스 솔버: `04-canary-index/solve.py`, 0.1초 미만.
+
+### 5. alias-chain
+- 시작 계정에서 세 경험을 뽑고 BLOG→REVIEWS→TRAVEL→MARKET→SOCIAL 순으로
+  표현만 달라진 동일 인물 계정을 찾는다.
+- 각 단계 3/3 일치는 하나이고 2/3 근접 후보는 여섯 개다.
+- 다섯 ASCII `PROFILE-ID` 체인의 SHA-256 앞 24글자로 플래그를 계산한다.
+- 레퍼런스 솔버: `05-alias-chain/solve.py`, 0.1초 미만.
+
 ---
 
 ## 검증 결과
 
-| 항목 | 1 | 2 | 3 |
-|------|---|---|---|
-| 배포물 zip 에서 레퍼런스 솔버 완주 | ✅ | ✅ | ✅ |
-| 무료 도구만으로 완주 (VLM/유료 API 불필요) | tesseract | 표준 라이브러리 | tesseract+pypdf |
-| 소스 없는 에이전트 블라인드 솔브 | ✅ | ✅ | ✅ |
-| 실제 IP/도메인 미포함 (RFC 5737 / example.*) | — | ✅ | ✅ |
-| guessing(찍기) 지점 부재 | ✅ | ✅ | ✅ |
+| 항목 | 1 | 2 | 3 | 4 | 5 |
+|------|---|---|---|---|---|
+| 배포물 zip 에서 레퍼런스 솔버 완주 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 무료 도구만으로 완주 | tesseract | 표준 라이브러리 | tesseract+pypdf | 표준 라이브러리 | 표준 라이브러리 |
+| 소스 없는 에이전트 블라인드 솔브 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 실제 IP/도메인 미포함 | — | ✅ | ✅ | — | — |
+| guessing(찍기) 지점 부재 | ✅ | ✅ | ✅ | 자체 감사 ✅ | 자체 감사 ✅ |
 
 ### guessing 부재 — 판정 기준
 
@@ -82,6 +103,12 @@ f7f2f27ac5730b31ea1c93999f9d1a389515d55ab7d2c451e3ac61203f6bc9ec  inbox-triage.z
   오답 telemetry 와 미끼 유사 도메인은 자기검증(복호 실패/자기 미끼만 생성)으로도 배제 (C).
 - 미끼가 있는 2·3 모두, 진짜와 미끼를 가르는 objective 판별자(인증·스팸 / 샌드박스
   등장)가 항상 존재한다.
+- 문제 4: 일치 사실 수가 1/2/3/4개일 때 후보가 `27/9/3/1`로 수렴한다 (B).
+- 문제 5: 일치 사실 수가 1/2/3개일 때 후보가 `9/3/1`로 수렴한다 (B). 접미사 개수와
+  이를 제거한 문장 빈도 서명도 27개 전부 같다.
+- 문제 5 블라인드 회귀: 문자 n-gram·TF-IDF·3문장 최적 매칭 8종의 top-1000 beam에
+  실제 체인이 없었다. bzip2 공백 제거본에서 MARKET만 정답 1위였으나 다른 네 단계에는
+  반복되지 않아 체인 판별자가 아니다.
 
 ---
 
@@ -92,9 +119,9 @@ f7f2f27ac5730b31ea1c93999f9d1a389515d55ab7d2c451e3ac61203f6bc9ec  inbox-triage.z
    오답 제한·감점 정책이 있는 플랫폼을 권한다.
    - 문제 2 미끼: `cr3d_h4rv3st3r_st4g3_tw0`, `vpn_c3rt_lur3_d3pl0y3d`, 등 6종
    - 문제 3 미끼: `b34c0n_k3y_r3c0v3r3d_w4v3_tw0`, `c2_ch4nn3l_k3y_n0t_r0t4t3d`, 등 4종
-   - 이 미끼들은 **정답이 아니다.** 정답은 위 한눈 요약 표의 3개뿐이다.
+   - 이 미끼들은 **정답이 아니다.** 정답은 위 한눈 요약 표의 5개뿐이다.
 
-2. **정답 검사는 정확 문자열 일치**로. 세 플래그 모두 `KCTF{...}` 형식.
+2. **정답 검사는 정확 문자열 일치**로. 다섯 플래그 모두 `KCTF{...}` 형식.
 
 3. **재생성 시** `SEED` 를 바꾸면 플래그 이후 바이트가 전부 바뀌므로,
    `02-inbox-triage/audit.py` 를 다시 돌리고 `misc/README.md` 잔여 위험 원장의
@@ -113,6 +140,11 @@ unzip -q $M/01-shredded/dist/shredded.zip -d /tmp/v
 $M/.venv/bin/python $M/01-shredded/solve.py     /tmp/v/shredded/fragments
 $M/.venv/bin/python $M/02-inbox-triage/solve.py  # 인자 없으면 dist 자동
 $M/.venv/bin/python $M/03-intel-chain/solve.py
+$M/.venv/bin/python $M/04-canary-index/solve.py
+$M/.venv/bin/python $M/05-alias-chain/solve.py
+
+# 다섯 ZIP의 구성·평문 플래그 부재·새 추출본 솔브·지름길 감사를 한 번에 실행
+$M/.venv/bin/python $M/test_challenges.py -v
 
 # 문제 재생성 (결정적, 단 zip mtime·MIME boundary 등 미세 비결정 있음)
 (cd $M/01-shredded && $M/.venv/bin/python prob.py)
@@ -125,3 +157,5 @@ $M/.venv/bin/python $M/03-intel-chain/solve.py
 - `misc/DESIGN.md`, `misc/SPEC.md` — 설계 방향과 확정 스펙
 - `01-shredded/calibrate.py` — 열화 파라미터 보정 하네스 (출제자 전용)
 - `02-inbox-triage/audit.py` — 지름길 전수 감사 (출제자 전용)
+- `04-canary-index/audit.py`, `05-alias-chain/audit.py` — 구조·게싱·생성기 흔적 감사
+- `test_challenges.py` — 다섯 배포 ZIP 통합 end-to-end 회귀 테스트

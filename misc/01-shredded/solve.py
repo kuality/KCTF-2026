@@ -6,14 +6,17 @@ KCTF 2026 MISC — shredded / 레퍼런스 솔버
 
 파이프라인:
   1) 전처리 (grayscale -> deskew -> upscale -> Otsu)
-  2) tesseract --psm 7 + base32 화이트리스트로 1차 OCR
+  2) tesseract --psm 7 + safe16 화이트리스트로 1차 OCR
   3) 체크섬으로 실패 조각 국소화
   4) 실패 조각만 전처리 변형을 스윕하며 재시도  <- AI/도구를 배율기로 쓰는 지점
   5) 인덱스 집합 무결성 검증 (중복/누락 = 남아있는 인덱스 오독)
-  6) 정렬 -> concat -> base32 decode -> ZIP 추출
+  6) 정렬 -> concat -> safe16 decode -> ZIP CRC 검증
+  7) 전체 prefix SHA-256과 HMAC tag 검증 -> 트레일러 플래그 복호화
 """
 
 import io
+import hashlib
+import hmac
 import itertools
 import os
 import re
@@ -32,6 +35,8 @@ CHUNK_CHARS = 24
 IDX_CHARS = 3
 CHK_CHARS = 3
 N_FRAGMENTS = 410
+TRAILER_MAGIC = b"KCTFENC1"
+TAG_BYTES = 16
 
 # 화이트리스트를 16심볼로 좁히는 것이 정확도의 핵심이다.
 # tesseract 는 화이트리스트 밖으로 답을 낼 수 없으므로, 알파벳이 작을수록
@@ -267,6 +272,43 @@ def decode(sym: str) -> bytes:
     return bytes.fromhex(sym.translate(str.maketrans(ALPHABET, HEXDIGITS)))
 
 
+def decrypt_flag(blob: bytes) -> str:
+    """Verify the full decoded payload and decrypt its authenticated trailer."""
+    pos = blob.rfind(TRAILER_MAGIC)
+    if pos < 0 or pos + len(TRAILER_MAGIC) + 2 + TAG_BYTES > len(blob):
+        return ""
+    size_pos = pos + len(TRAILER_MAGIC)
+    cipher_len = int.from_bytes(blob[size_pos:size_pos + 2], "big")
+    cipher_pos = size_pos + 2
+    tag_pos = cipher_pos + cipher_len
+    if tag_pos + TAG_BYTES != len(blob):
+        return ""
+
+    prefix = blob[:pos]
+    cipher = blob[cipher_pos:tag_pos]
+    trailer_body = blob[pos:tag_pos]
+    tag = blob[tag_pos:]
+    key = hashlib.sha256(prefix).digest()
+    expected_tag = hmac.new(
+        key, trailer_body, hashlib.sha256
+    ).digest()[:TAG_BYTES]
+    if not hmac.compare_digest(tag, expected_tag):
+        return ""
+
+    stream, counter = b"", 0
+    while len(stream) < len(cipher):
+        stream += hashlib.sha256(
+            key + counter.to_bytes(4, "big")
+        ).digest()
+        counter += 1
+    plain = bytes(a ^ b for a, b in zip(cipher, stream))
+    try:
+        text = plain.decode("ascii")
+    except UnicodeDecodeError:
+        return ""
+    return text if re.fullmatch(r"KCTF\{[ -~]+\}", text) else ""
+
+
 # ------------------------------------------------------------ main
 
 def solve(frag_dir: str):
@@ -371,14 +413,11 @@ def _assemble(idx_map):
         with zipfile.ZipFile(io.BytesIO(blob)) as zf:
             if zf.testzip():
                 return None
-            text = zf.read("recovery_log.txt").decode()
+            zf.read("recovery_log.txt")
     except (zipfile.BadZipFile, KeyError, UnicodeDecodeError,
             zlib.error, EOFError, ValueError):
         return None
-    for line in text.splitlines():
-        if "KCTF{" in line:
-            return line.strip()
-    return None
+    return decrypt_flag(blob) or None
 
 
 MAX_TRIALS = 300000

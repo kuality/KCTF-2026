@@ -67,6 +67,20 @@ from datetime import datetime, timedelta, timezone
 
 FLAG = "KCTF{thr34d_h1j4ck_h1d3s_1n_th3_gr4ph}"
 
+INCIDENT_BRIEF = """\
+NORITE SYSTEMS — INCIDENT TRIAGE
+================================
+
+침해사고 대응 중 확보한 직원 메일함 덤프 600통이다.
+이 중 딱 한 통이 실제 자격증명 탈취에 성공했다.
+
+공격자는 새 대화를 시작하지 않았다. 기존 내부 업무 대화에 외부 발신자로
+끼어들었고, 스팸 필터까지 통과했다. 스팸으로 분류된 메일만 살펴보면 정답을
+놓치게 된다.
+
+해당 메일을 식별하고 첨부 파일을 분석해 플래그를 복구하라.
+"""
+
 SEED = 20260320
 N_TOTAL = 600
 
@@ -810,6 +824,10 @@ def main():
     if os.path.isdir(DIST):
         shutil.rmtree(DIST)
     os.makedirs(MAIL_DIR)
+
+    with open(os.path.join(DIST, "inbox-triage", "INCIDENT_BRIEF.txt"),
+              "w", encoding="utf-8", newline="\n") as f:
+        f.write(INCIDENT_BRIEF)
 
     order = list(range(len(g.mails)))
     r.shuffle(order)

@@ -3,7 +3,7 @@
 KCTF 2026 MISC — shredded
 문제 생성기.
 
-플래그 ZIP → base32 → 410조각 → 열화된 스캔 이미지 410장.
+인증된 ZIP → safe16 → 410조각 → 열화된 스캔 이미지 410장.
 
 설계 요점 (SPEC.md 참조):
   - 인코딩 알파벳은 **실측 혼동행렬로 고른 16심볼** ABCDEGHKMNORSWY4 이다.
@@ -26,6 +26,7 @@ KCTF 2026 MISC — shredded
 """
 
 import hashlib
+import hmac
 import io
 import os
 import random
@@ -45,6 +46,8 @@ CHUNK_CHARS = 24            # 심볼당 4비트 -> 청크당 12바이트
 IDX_CHARS = 3               # 16^3 = 4096 > 410
 CHK_CHARS = 3               # 12비트 체크섬
 PAYLOAD_BYTES = N_FRAGMENTS * CHUNK_CHARS // 2  # 4920
+TRAILER_MAGIC = b"KCTFENC1"
+TAG_BYTES = 16
 
 # OCR 혼동행렬 실측으로 선별한 16심볼. (문자 오독률 0.10%)
 ALPHABET = "ABCDEGHKMNORSWY4"
@@ -108,6 +111,22 @@ CHK 는 IDX 와 DATA 를 이어붙인 27심볼에 대한 12비트 위치 가중 
     CHK   = (total & 0xFFF) 를 위 규칙대로 3심볼로 표기
 
 파일 이름은 아무 의미 없다. 순서는 IDX 로만 정해진다.
+
+복원한 4,920바이트는 ZIP 뒤에 인증된 암호문 트레일러를 붙인 형식이다.
+ZIP 안에는 recovery_log.txt 가 있다. 마지막 트레일러 형식은 다음과 같다.
+
+    b"KCTFENC1" || flag_len(2바이트 big-endian) || flag_cipher || tag(16바이트)
+
+MAGIC 직전까지의 바이트를 prefix 라고 한다. ZIP 뒤의 채움 바이트도 prefix에
+포함한다. 플래그는 4,920바이트 전체가 정확해야만 복호되도록 묶여 있다.
+
+    key       = SHA256(prefix)
+    keystream = SHA256(key || counter.to_bytes(4, "big")) 를
+                counter=0,1,2,... 순서로 이어붙인 바이트열
+    flag      = flag_cipher XOR keystream
+    tag       = HMAC-SHA256(key, MAGIC || flag_len || flag_cipher) 의 앞 16바이트
+
+ZIP CRC, tag, 플래그 형식 KCTF{...} 을 모두 확인해야 복원이 끝난다.
 """
 
 
@@ -125,49 +144,71 @@ def _log_line(n: int) -> str:
 
 def build_payload() -> bytes:
     """
-    복원 로그 텍스트를 담은 deflate ZIP 하나. 압축 후 크기가 PAYLOAD_BYTES 에
-    거의 딱 맞도록 줄 수를 조정한다.
+    복원 로그 텍스트를 담은 deflate ZIP과 인증 트레일러. 합친 크기가
+    PAYLOAD_BYTES에 딱 맞도록 줄 수와 채움 바이트를 조정한다.
 
     왜 이렇게 하는가:
       플래그를 작은 ZIP 에 넣고 뒤를 패딩으로 채우면, ZIP 이 앞쪽 십수 조각 안에
       전부 들어가버려서 솔버가 나머지 대부분을 읽지 않아도 플래그가 나온다.
-      압축 스트림이 페이로드 전체를 채우고 플래그가 **맨 끝 줄**에 있으면,
-      중간 한 청크만 틀려도 deflate 스트림이 어긋나 끝까지 복원되지 않는다.
-      → 410장 전량 정확 복원이 강제되고, ZIP CRC 가 실패를 알려준다.
+      ZIP 로컬 엔트리에 플래그를 두면 중앙 디렉터리 구간을 생략하고도 꺼낼 수
+      있다. 따라서 ZIP과 채움 바이트 전체를 prefix로 두고, 그 SHA-256으로
+      암호화·인증한 트레일러를 맨 끝에 둔다. 어느 구간 한 바이트라도 틀리거나
+      빠지면 key/tag가 달라진다.
+      → ZIP CRC와 전체 페이로드 인증이 410장 전량 정확 복원을 함께 강제한다.
     """
     header = ("SHREDDER RECOVERY LOG / Norite Systems / bin sweep 2026-03-14\n"
               "----------------------------------------------------------\n")
-    footer_note = "\n-- sweep complete. reassembled artifact below --\n"
+    footer_note = "\n-- sweep complete. authenticated trailer follows archive --\n"
 
     def make_zip(n_lines: int) -> bytes:
         body = header + "\n".join(_log_line(i) for i in range(n_lines))
-        body += footer_note + FLAG + "\n"
+        body += footer_note
+        log = body.encode("utf-8")
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
-            zf.writestr("recovery_log.txt", body)
+            zf.writestr("recovery_log.txt", log)
         return buf.getvalue()
 
-    # 이분 탐색으로 PAYLOAD_BYTES 를 넘지 않는 최대 줄 수를 찾는다.
+    flag_bytes = FLAG.encode("ascii")
+    trailer_len = len(TRAILER_MAGIC) + 2 + len(flag_bytes) + TAG_BYTES
+    prefix_len = PAYLOAD_BYTES - trailer_len
+
+    # 이분 탐색으로 prefix 영역을 넘지 않는 최대 줄 수를 찾는다.
     lo, hi = 1, 4000
     while lo < hi:
         mid = (lo + hi + 1) // 2
-        if len(make_zip(mid)) <= PAYLOAD_BYTES:
+        if len(make_zip(mid)) <= prefix_len:
             lo = mid
         else:
             hi = mid - 1
 
     raw = make_zip(lo)
-    pad_len = PAYLOAD_BYTES - len(raw)
+    pad_len = prefix_len - len(raw)
     assert pad_len >= 0
 
-    # 남는 자투리(보통 수십 바이트)만 채운다. ZIP 은 트레일링 바이트를 무시한다.
+    # ZIP은 EOCD 뒤의 채움 바이트를 무시하지만, 이 바이트도 key에는 포함된다.
     filler, h = b"", hashlib.sha256(b"shredded-pad")
     while len(filler) < pad_len:
         h = hashlib.sha256(h.digest())
         filler += h.digest()
 
-    print(f"  페이로드: ZIP {len(raw)}B (로그 {lo}줄) + 패딩 {pad_len}B")
-    return raw + filler[:pad_len]
+    prefix = raw + filler[:pad_len]
+    key = hashlib.sha256(prefix).digest()
+    stream, counter = b"", 0
+    while len(stream) < len(flag_bytes):
+        stream += hashlib.sha256(
+            key + counter.to_bytes(4, "big")
+        ).digest()
+        counter += 1
+    cipher = bytes(a ^ b for a, b in zip(flag_bytes, stream))
+    trailer_body = TRAILER_MAGIC + len(cipher).to_bytes(2, "big") + cipher
+    tag = hmac.new(key, trailer_body, hashlib.sha256).digest()[:TAG_BYTES]
+    payload = prefix + trailer_body + tag
+    assert len(payload) == PAYLOAD_BYTES
+
+    print(f"  페이로드: ZIP {len(raw)}B (로그 {lo}줄) + "
+          f"인증 prefix 패딩 {pad_len}B + 트레일러 {trailer_len}B")
+    return payload
 
 
 def encode(blob: bytes) -> str:
