@@ -1,0 +1,11 @@
+name: diagnosis status
+category: web 
+difficulty: low
+port: 10004
+tags: 
+- lfi
+description: |
+고려대 대학병원의 간암센터가 오픈 되어, 소개하는 사이트입니다. 
+flag: KCTF{c31c79e4635efba7ce230bd7403cbf9d}
+chall_dir: challenge
+compose_file: challenge/docker-compose.yml

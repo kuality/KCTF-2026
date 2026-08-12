@@ -1,0 +1,1 @@
+SQL Injection을 통해, flag 테이블을 찾아 flag를 얻습니다.

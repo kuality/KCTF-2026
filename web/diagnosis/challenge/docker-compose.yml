@@ -1,0 +1,15 @@
+version: '2'
+
+services:
+  diagnosis-status:
+    labels:
+      category: "web"
+      challenge_name: "diagnosis status"
+      difficulty: "low"
+    container_name: ccunictf-web-diagnosis-status
+    image: ccunictf/web-diagnosis-status:latest
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    ports:
+      - "10004:80"

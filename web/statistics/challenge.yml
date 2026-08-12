@@ -1,0 +1,11 @@
+name: statistics
+category: web 
+difficulty: low
+port: 10001
+tags: 
+- union based sql injection
+description: |
+관리자 페이지는 아직 개발중입니다!
+flag: KCTF{a912a94d79b5124d876951f96ebb256f}
+chall_dir: challenge
+compose_file: challenge/docker-compose.yml

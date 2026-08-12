@@ -1,0 +1,11 @@
+name: private midecal information center
+category: web 
+difficulty: low
+port: 10003
+tags: 
+- quine sql injection
+description: |
+한진 대학병원 직원들을 위한 내부 커뮤니티 사이트입니다.
+flag: KCTF{14d2adf6976de53baef66d0bb7e71b1c}
+chall_dir: challenge
+compose_file: challenge/docker-compose.yml
