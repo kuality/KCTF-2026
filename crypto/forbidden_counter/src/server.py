@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""TCP service for forbidden_counter."""
-
 from __future__ import annotations
 
 import argparse
@@ -44,7 +42,6 @@ class TokenHandler(socketserver.StreamRequestHandler):
         if self.server.fixed:
             nonces = [nonce_prefix + index.to_bytes(4, "big") for index in range(3)]
         else:
-            # Bug: each helper simulates a restarted worker whose counter begins at zero.
             nonces = [nonce_prefix + bytes(4) for _ in range(3)]
 
         samples: list[dict[str, str]] = []

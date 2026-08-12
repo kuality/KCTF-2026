@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Exercise the vulnerable and fixed TCP services."""
-
 from __future__ import annotations
 
 import socket

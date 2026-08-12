@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Recover a FROST share from one reused hiding/binding nonce ticket."""
-
 from __future__ import annotations
 
 import argparse

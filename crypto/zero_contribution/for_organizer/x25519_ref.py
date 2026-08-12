@@ -1,5 +1,3 @@
-"""RFC 7748 X25519 and HKDF-SHA256 helpers."""
-
 from __future__ import annotations
 
 import hashlib

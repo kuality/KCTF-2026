@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Recover the GCM authentication subkey and forge an admin token."""
-
 from __future__ import annotations
 
 import argparse

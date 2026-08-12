@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Exercise the reusable and one-time ticket TCP services."""
-
 from __future__ import annotations
 
 import socket

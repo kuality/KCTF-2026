@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Exploit zero_contribution with an X25519 low-order public input."""
-
 from __future__ import annotations
 
 import argparse

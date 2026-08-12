@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Exercise the actual vulnerable and fixed TCP entrypoints."""
-
 from __future__ import annotations
 
 import socket

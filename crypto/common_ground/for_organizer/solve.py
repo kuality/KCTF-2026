@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Recover the common_ground flag using the RSA common-modulus attack."""
-
 from __future__ import annotations
 
 import argparse

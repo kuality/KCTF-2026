@@ -1,5 +1,3 @@
-"""Minimal ctypes bindings for libsodium's ristretto255 group operations."""
-
 from __future__ import annotations
 
 import ctypes

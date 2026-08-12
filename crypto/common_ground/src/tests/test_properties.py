@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Property checks for deterministic common-ground instances."""
-
 from __future__ import annotations
 
 import importlib.util

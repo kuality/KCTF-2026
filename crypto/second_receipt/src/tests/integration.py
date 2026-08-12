@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Exercise the actual TCP entrypoint, including the strict fixed variant."""
-
 from __future__ import annotations
 
 import socket

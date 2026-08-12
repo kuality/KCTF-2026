@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Twenty-seed GCM forgery and unique-nonce negative tests."""
-
 from __future__ import annotations
 
 import hashlib

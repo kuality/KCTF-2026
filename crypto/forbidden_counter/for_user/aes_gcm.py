@@ -1,9 +1,3 @@
-"""Small, auditable AES-128-GCM implementation used by two KCTF challenges.
-
-This module intentionally favors clarity over performance. It implements only
-96-bit nonces and 128-bit tags, which are the only forms used by the services.
-"""
-
 from __future__ import annotations
 
 import hmac
@@ -93,8 +87,6 @@ def _mix_column(column: list[int]) -> list[int]:
 
 
 def aes128_encrypt_block(key: bytes, block: bytes) -> bytes:
-    """Encrypt one 16-byte block with AES-128."""
-
     if len(block) != BLOCK_SIZE:
         raise ValueError("AES block must be 16 bytes")
     round_keys = _expand_key(key)
@@ -122,8 +114,6 @@ def aes128_encrypt_block(key: bytes, block: bytes) -> bytes:
 
 
 def gf128_mul(left: int, right: int) -> int:
-    """Multiply GHASH field elements in NIST's big-endian bit convention."""
-
     result = 0
     value = right
     for bit_index in range(128):
@@ -140,8 +130,6 @@ def _blocks(data: bytes) -> list[bytes]:
 
 
 def ghash(hash_subkey: int, aad: bytes, ciphertext: bytes) -> int:
-    """Compute GHASH over AAD and ciphertext."""
-
     accumulator = 0
     for block in _blocks(aad) + _blocks(ciphertext):
         accumulator = gf128_mul(accumulator ^ int.from_bytes(block, "big"), hash_subkey)
@@ -172,8 +160,6 @@ def _gctr(key: bytes, initial_counter: bytes, data: bytes) -> bytes:
 def encrypt(
     key: bytes, nonce: bytes, plaintext: bytes, aad: bytes = b""
 ) -> tuple[bytes, bytes]:
-    """Encrypt and authenticate with AES-128-GCM."""
-
     if len(key) != 16:
         raise ValueError("AES-128-GCM requires a 16-byte key")
     if len(nonce) != 12:
@@ -191,8 +177,6 @@ def encrypt(
 def decrypt(
     key: bytes, nonce: bytes, ciphertext: bytes, tag: bytes, aad: bytes = b""
 ) -> bytes:
-    """Authenticate and decrypt an AES-128-GCM ciphertext."""
-
     if len(tag) != 16:
         raise ValueError("GCM tag must be 16 bytes")
     initial = nonce + b"\x00\x00\x00\x01"
@@ -207,8 +191,6 @@ def decrypt(
 
 
 def self_test() -> None:
-    """Check FIPS-197 AES and NIST SP 800-38D GCM vectors."""
-
     aes_key = bytes.fromhex("000102030405060708090a0b0c0d0e0f")
     aes_plaintext = bytes.fromhex("00112233445566778899aabbccddeeff")
     aes_expected = bytes.fromhex("69c4e0d86a7b0430d8cdb78070b4c55a")

@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Exploit second_receipt using a non-canonical Ed25519 response scalar."""
-
 from __future__ import annotations
 
 import argparse

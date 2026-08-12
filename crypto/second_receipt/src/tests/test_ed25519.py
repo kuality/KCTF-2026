@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""RFC vector and 20-seed malleability regression tests."""
-
 from __future__ import annotations
 
 import hashlib

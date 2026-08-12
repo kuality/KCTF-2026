@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Generate the deterministic public RSA instance for common_ground."""
-
 from __future__ import annotations
 
 import argparse

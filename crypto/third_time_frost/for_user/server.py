@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Two-party FROST signer with a deliberately reusable nonce ticket."""
-
 from __future__ import annotations
 
 import argparse

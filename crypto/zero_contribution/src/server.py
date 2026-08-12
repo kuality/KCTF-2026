@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""TCP service for zero_contribution."""
-
 from __future__ import annotations
 
 import argparse

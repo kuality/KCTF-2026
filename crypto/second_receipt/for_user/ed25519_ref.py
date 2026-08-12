@@ -1,10 +1,3 @@
-"""Compact Ed25519 implementation for the second_receipt challenge.
-
-The group arithmetic follows RFC 8032. The vulnerable verifier differs from
-the strict verifier in exactly one place: it omits the canonical ``S < L``
-check before evaluating the signature equation.
-"""
-
 from __future__ import annotations
 
 import hashlib

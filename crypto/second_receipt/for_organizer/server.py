@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""TCP service for second_receipt."""
-
 from __future__ import annotations
 
 import argparse

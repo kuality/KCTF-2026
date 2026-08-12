@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""RFC vector and five-seed nonce-pair recovery tests."""
-
 from __future__ import annotations
 
 import hashlib

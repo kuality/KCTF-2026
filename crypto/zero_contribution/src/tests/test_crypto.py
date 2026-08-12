@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""RFC/NIST vectors and low-order X25519 properties."""
-
 from __future__ import annotations
 
 import hashlib

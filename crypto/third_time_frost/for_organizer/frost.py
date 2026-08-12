@@ -1,5 +1,3 @@
-"""RFC 9591 FROST(ristretto255, SHA-512) transcript helpers."""
-
 from __future__ import annotations
 
 import hashlib
