@@ -1,0 +1,10 @@
+misc/.venv/
+__pycache__/
+*.pyc
+
+# 배포물의 압축 해제본은 커밋하지 않는다. 배포되는 것은 zip 이고,
+# 압축 해제본은 zip 에서 그대로 나온다.
+misc/*/dist/*/
+
+# macOS
+.DS_Store
