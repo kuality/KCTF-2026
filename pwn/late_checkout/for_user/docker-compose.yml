@@ -1,0 +1,27 @@
+services:
+  late_checkout:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${LATE_CHECKOUT_PORT:-10001}:8080"
+    restart: unless-stopped
+    init: true
+    user: "2001:2001"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    mem_limit: 128m
+    cpus: 0.50
+    pids_limit: 64
+    ulimits:
+      core: 0
+      nofile:
+        soft: 64
+        hard: 64
+      nproc:
+        soft: 48
+        hard: 48
+    stop_grace_period: 5s

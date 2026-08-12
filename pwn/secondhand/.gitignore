@@ -1,0 +1,8 @@
+# Never place the generated organizer flag in version-control history.
+/for_organizer/flag
+**/__pycache__/
+*.py[co]
+
+# Reproducible local/Docker build outputs.
+/src/build/
+/src/docker-out/

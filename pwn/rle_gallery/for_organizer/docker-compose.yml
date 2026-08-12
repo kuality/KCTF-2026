@@ -1,0 +1,24 @@
+services:
+  rle_gallery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-31337}:31337"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    mem_limit: 128m
+    cpus: "0.50"
+    pids_limit: 64
+    ulimits:
+      nofile:
+        soft: 128
+        hard: 128
+      nproc:
+        soft: 48
+        hard: 48
+    stop_grace_period: 3s
