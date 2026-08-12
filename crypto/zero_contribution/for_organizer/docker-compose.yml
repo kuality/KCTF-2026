@@ -1,0 +1,22 @@
+services:
+  challenge:
+    build: .
+    ports:
+      - "${PORT:-31342}:5000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    secrets:
+      - challenge_flag
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.50
+    restart: unless-stopped
+
+secrets:
+  challenge_flag:
+    file: ./flag
