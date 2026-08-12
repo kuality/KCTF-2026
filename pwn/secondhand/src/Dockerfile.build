@@ -1,0 +1,27 @@
+FROM ubuntu:26.04@sha256:7b202b0e2e0028c6250f5fcf41d04df492d145a1654c6995a6553f0c1f6f1960 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LC_ALL=C
+RUN sed -i 's/^Suites: resolute resolute-updates resolute-backports$/Suites: resolute/' \
+        /etc/apt/sources.list.d/ubuntu.sources \
+    && sed -i '/^## Ubuntu security updates/,$d' \
+        /etc/apt/sources.list.d/ubuntu.sources
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        binutils=2.46-3ubuntu2 \
+        gcc=4:15.2.0-5ubuntu1 \
+        gcc-15=15.2.0-16ubuntu1 \
+        libc6-dev=2.43-2ubuntu2 \
+        make=4.4.1-3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY Makefile secondhand.c tcp_runner.c verify_build.sh ./
+RUN make -j1 clean all verify
+
+FROM ubuntu:26.04@sha256:7b202b0e2e0028c6250f5fcf41d04df492d145a1654c6995a6553f0c1f6f1960 AS export
+COPY --from=builder /src/build/secondhand /secondhand
+COPY --from=builder /src/build/secondhand.debug /secondhand.debug
+COPY --from=builder /src/build/tcp_runner /tcp_runner
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libc.so.6 /libc.so.6
+COPY --from=builder /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 /ld-linux-x86-64.so.2

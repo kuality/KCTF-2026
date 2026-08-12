@@ -1,0 +1,28 @@
+FROM ubuntu:26.04@sha256:7b202b0e2e0028c6250f5fcf41d04df492d145a1654c6995a6553f0c1f6f1960 AS export
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LC_ALL=C
+RUN sed -i 's/^Suites: resolute resolute-updates resolute-backports$/Suites: resolute/' \
+        /etc/apt/sources.list.d/ubuntu.sources \
+    && sed -i '/^## Ubuntu security updates/,$d' \
+        /etc/apt/sources.list.d/ubuntu.sources
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       binutils=2.46-3ubuntu2 \
+       gcc=4:15.2.0-5ubuntu1 \
+       gcc-15=15.2.0-16ubuntu1 \
+       libc6-dev=2.43-2ubuntu2 \
+       make=4.4.1-3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work
+COPY Makefile rle_gallery.c listener.c ./
+RUN make -j1 clean all verify \
+    && gcc --version | head -n 1 > build/toolchain.txt \
+    && ld --version | head -n 1 >> build/toolchain.txt \
+    && install -m 0755 build/rle_gallery /rle_gallery \
+    && install -m 0755 build/rle_gallery.debug /rle_gallery.debug \
+    && install -m 0755 build/listener /listener \
+    && install -m 0644 build/toolchain.txt /toolchain.txt
+
+CMD ["/listener", "31337", "/rle_gallery"]

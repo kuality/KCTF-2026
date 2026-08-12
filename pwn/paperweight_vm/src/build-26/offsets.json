@@ -1,0 +1,11 @@
+{
+  "handler_leak_offset": 5536,
+  "handler_zero_index": -82,
+  "pivot_offset": 7712,
+  "pop_rdx_offset": 7728,
+  "pwn_uid": 2000,
+  "tape_base_index": -85,
+  "tape_origin_index": -84,
+  "trigger_handler_index": -67,
+  "version": 1
+}
