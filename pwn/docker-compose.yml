@@ -1,39 +1,49 @@
 services:
   late_checkout:
+    image: kctf2026/pwn-late-checkout-organizer:latest
+    pull_policy: build
     build:
-      context: ./late_checkout/for_user
+      context: ./late_checkout/for_organizer
       dockerfile: Dockerfile
     ports:
       - "${LATE_CHECKOUT_PORT:-10001}:8080"
     restart: unless-stopped
 
   inkspill:
+    image: kctf2026/pwn-inkspill-organizer:latest
+    pull_policy: build
     build:
-      context: ./inkspill/for_user
+      context: ./inkspill/for_organizer
       dockerfile: Dockerfile
     ports:
       - "${INKSPILL_PORT:-10002}:1337"
     restart: unless-stopped
 
   secondhand:
+    image: kctf2026/pwn-secondhand-organizer:latest
+    pull_policy: build
     build:
-      context: ./secondhand/for_user
+      context: ./secondhand/for_organizer
       dockerfile: Dockerfile
     ports:
       - "${SECONDHAND_PORT:-10003}:1337"
     restart: unless-stopped
 
   rle_gallery:
+    image: kctf2026/pwn-rle-gallery-organizer:latest
+    pull_policy: build
     build:
-      context: ./rle_gallery/for_user
+      context: ./rle_gallery/for_organizer
       dockerfile: Dockerfile
     ports:
       - "${RLE_GALLERY_PORT:-10004}:31337"
     restart: unless-stopped
 
   paperweight_vm:
+    image: kctf2026/pwn-paperweight-vm-organizer:latest
+    pull_policy: build
     build:
-      context: ./paperweight_vm/for_user
+      context: ./paperweight_vm/for_organizer
       dockerfile: Dockerfile
     ports:
       - "${PAPERWEIGHT_VM_PORT:-10005}:8080"
