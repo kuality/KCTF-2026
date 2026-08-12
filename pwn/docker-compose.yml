@@ -1,0 +1,40 @@
+services:
+  late_checkout:
+    build:
+      context: ./late_checkout/for_user
+      dockerfile: Dockerfile
+    ports:
+      - "${LATE_CHECKOUT_PORT:-10001}:8080"
+    restart: unless-stopped
+
+  inkspill:
+    build:
+      context: ./inkspill/for_user
+      dockerfile: Dockerfile
+    ports:
+      - "${INKSPILL_PORT:-10002}:1337"
+    restart: unless-stopped
+
+  secondhand:
+    build:
+      context: ./secondhand/for_user
+      dockerfile: Dockerfile
+    ports:
+      - "${SECONDHAND_PORT:-10003}:1337"
+    restart: unless-stopped
+
+  rle_gallery:
+    build:
+      context: ./rle_gallery/for_user
+      dockerfile: Dockerfile
+    ports:
+      - "${RLE_GALLERY_PORT:-10004}:31337"
+    restart: unless-stopped
+
+  paperweight_vm:
+    build:
+      context: ./paperweight_vm/for_user
+      dockerfile: Dockerfile
+    ports:
+      - "${PAPERWEIGHT_VM_PORT:-10005}:8080"
+    restart: unless-stopped
