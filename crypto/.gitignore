@@ -1,8 +1,0 @@
-# Organizer-only secrets are provisioned on the challenge server.
-*/for_organizer/flag
-*/for_organizer/instance_seed.hex
-
-# Local validation artifacts.
-**/__pycache__/
-*.py[cod]
-.ruff_cache/
