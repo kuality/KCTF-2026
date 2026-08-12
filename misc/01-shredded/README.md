@@ -234,6 +234,7 @@ FLAG: KCTF{0cr_p1p3l1n3_b34ts_th3_shr3dd3r}
 | `prob.py` | 문제 생성기 |
 | `solve.py` | 레퍼런스 솔버 (end-to-end) |
 | `calibrate.py` | 열화 파라미터 보정 하네스 (출제자 전용) |
+| `SUBMISSION.md` | 제출 양식용 문제 설명·풀이·파일 구분 |
 | `dist/shredded.zip` | 배포물 |
 
 ### 재현

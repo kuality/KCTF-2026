@@ -133,25 +133,33 @@ fbd0fc6d6de40b16fa4091ef87b6d8c404916e963cc00c271783f07ca2df43ab  canary-index.z
 
 ```bash
 # 의존성: python venv (pillow numpy pytesseract pycryptodome reportlab pypdf) + tesseract
-M=/Users/s3zer0/ctf/KCTF-2026/misc
+# 저장소의 misc 디렉터리에서 실행
+KCTF_MISC_ROOT="$(pwd)"
 
-# 배포물에서 직접 풀기 (cwd 무관, 절대경로)
-unzip -q $M/01-shredded/dist/shredded.zip -d /tmp/v
-$M/.venv/bin/python $M/01-shredded/solve.py     /tmp/v/shredded/fragments
-$M/.venv/bin/python $M/02-inbox-triage/solve.py  # 인자 없으면 dist 자동
-$M/.venv/bin/python $M/03-intel-chain/solve.py
-$M/.venv/bin/python $M/04-canary-index/solve.py
-$M/.venv/bin/python $M/05-alias-chain/solve.py
+# 배포물에서 직접 풀기 (깨끗한 임시 디렉터리)
+KCTF_VERIFY_DIR="$(mktemp -d)"
+unzip -q "$KCTF_MISC_ROOT/01-shredded/dist/shredded.zip"         -d "$KCTF_VERIFY_DIR/01"
+unzip -q "$KCTF_MISC_ROOT/02-inbox-triage/dist/inbox-triage.zip" -d "$KCTF_VERIFY_DIR/02"
+unzip -q "$KCTF_MISC_ROOT/03-intel-chain/dist/intel-chain.zip"   -d "$KCTF_VERIFY_DIR/03"
+unzip -q "$KCTF_MISC_ROOT/04-canary-index/dist/canary-index.zip" -d "$KCTF_VERIFY_DIR/04"
+unzip -q "$KCTF_MISC_ROOT/05-alias-chain/dist/alias-chain.zip"   -d "$KCTF_VERIFY_DIR/05"
+"$KCTF_MISC_ROOT/.venv/bin/python" "$KCTF_MISC_ROOT/01-shredded/solve.py"     "$KCTF_VERIFY_DIR/01/shredded/fragments"
+"$KCTF_MISC_ROOT/.venv/bin/python" "$KCTF_MISC_ROOT/02-inbox-triage/solve.py" "$KCTF_VERIFY_DIR/02/inbox-triage/maildump"
+"$KCTF_MISC_ROOT/.venv/bin/python" "$KCTF_MISC_ROOT/03-intel-chain/solve.py"  "$KCTF_VERIFY_DIR/03/intel-chain"
+"$KCTF_MISC_ROOT/.venv/bin/python" "$KCTF_MISC_ROOT/04-canary-index/solve.py" "$KCTF_VERIFY_DIR/04/canary-index"
+"$KCTF_MISC_ROOT/.venv/bin/python" "$KCTF_MISC_ROOT/05-alias-chain/solve.py"  "$KCTF_VERIFY_DIR/05/alias-chain"
 
 # 다섯 ZIP의 구성·평문 플래그 부재·새 추출본 솔브·지름길 감사를 한 번에 실행
-$M/.venv/bin/python $M/test_challenges.py -v
+"$KCTF_MISC_ROOT/.venv/bin/python" "$KCTF_MISC_ROOT/test_challenges.py" -v
 
 # 문제 재생성 (결정적, 단 zip mtime·MIME boundary 등 미세 비결정 있음)
-(cd $M/01-shredded && $M/.venv/bin/python prob.py)
+(cd "$KCTF_MISC_ROOT/01-shredded" && "$KCTF_MISC_ROOT/.venv/bin/python" prob.py)
 ```
 
 ## 리포지토리 안내
 
+- `SUBMISSIONS.md` — 문제 제출 양식용 문서 인덱스
+- 문제별 `SUBMISSION.md` — 문제 설명 + FLAG 획득 과정 + PoC + Challenge Files 구분
 - 문제별 `README.md` — 문제 설명 + 상세 풀이 + 설계 노트 (라운드별 하드닝 이력 포함)
 - `misc/README.md` — 카테고리 관통 원칙 + 검증 이력 + **잔여 위험 원장**
 - `misc/DESIGN.md`, `misc/SPEC.md` — 설계 방향과 확정 스펙

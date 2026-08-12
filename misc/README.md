@@ -11,7 +11,9 @@ AI는 **정답을 알려주는 오라클이 아니라, 사람이 손으로는 �
 | 4 | [canary-index](04-canary-index/) | Semantic matching — 바꿔 쓴 HUMINT 유출문과 브리핑 대조 | LOW–MED | `KCTF{c4n4ry_m4tch_782992d2c39953d39ab94a74}` |
 | 5 | [alias-chain](05-alias-chain/) | Entity resolution — 플랫폼을 건너 온라인 별명 연결 | LOW–MED | `KCTF{4l14s_ch41n_0dff2f984c5429eeca69c499}` |
 
-각 문제 폴더에 `prob.py`(생성기), `solve.py`(레퍼런스 솔버), `README.md`(설명+풀이+설계 노트), `dist/`(배포물)가 있다.
+각 문제 폴더에 `prob.py`(생성기), `solve.py`(레퍼런스 솔버),
+`README.md`(상세 풀이+설계 노트), `SUBMISSION.md`(제출 양식용 문서),
+`dist/`(공개 배포물)가 있다.
 
 ---
 
@@ -198,6 +200,7 @@ IP는 RFC 5737(`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`),
 ```
 misc/
 ├── README.md          이 문서
+├── SUBMISSIONS.md     다섯 문제 제출 문서 인덱스
 ├── DESIGN.md          최초 설계 방향 (일부는 실측으로 뒤집힘)
 ├── SPEC.md            확정 스펙
 ├── test_challenges.py 다섯 ZIP 통합 회귀 테스트

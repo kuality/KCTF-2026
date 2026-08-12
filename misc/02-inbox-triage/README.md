@@ -123,11 +123,9 @@ var blob = [ ... ];
 // Then "|" then host.
 //
 //   MATERIAL = "<root>,<...>,<parent>" + "|" + host
-//   key      = sha256(MATERIAL)
-//
-// (operator note: walk In-Reply-To all the way up. our own In-Reply-To is
-//  mid-thread and the References we send is truncated on purpose, so the
-//  chain is not readable off any single header.)
+//   h        = MATERIAL as ascii bytes
+//   repeat 12000000 times: h = sha256(h)
+//   key      = h  (raw 32-byte digest, not hex)
 
 // keystream = sha256(key + str(i)) concatenated, i = 0,1,2,...
 // plain[j] = blob[j] ^ keystream[j]
@@ -152,20 +150,22 @@ var blob = [ ... ];
 
 ### 6. 복호
 
-SHA256 카운터 모드 키스트림으로 XOR. 순수 파이썬 15줄이면 재현된다.
+키 재료에 SHA-256을 12,000,000회 반복 적용한 뒤 SHA256 카운터 모드 키스트림으로
+XOR한다. 순수 파이썬으로 재현할 수 있다.
 
 ```
 $ python3 solve.py dist/inbox-triage/maildump
 [*] 전체 600통
       답장 387통 / 외부 도메인 106통 / 외부 Received 116통 / 첨부 66통
 [*] 세 조건의 교집합: 1통
-[*] 하이재킹 메일: 0548.eml
+[*] 하이재킹 메일: 0455.eml
 [*] 위조 도메인: norite-systerns.com  (정상: norite-systems.com)
-[*] 조상 체인 4단계 -> 루트 <eb8d2821a146dd4d@norite-systems.com>
+[*] 조상 체인 4단계 -> 루트 <46e13543292279f4@norite-systems.com>
+[*] KDF 12,000,000회
 FLAG: KCTF{thr34d_h1j4ck_h1d3s_1n_th3_gr4ph}
 ```
 
-0.3초.
+현재 배포물 기준 약 2초.
 
 ---
 
@@ -460,6 +460,8 @@ $ python3 audit.py
 |---|---|
 | `prob.py` | 문제 생성기 (SEED 고정, 결정적) |
 | `solve.py` | 레퍼런스 솔버 — 불변식 유일성을 단언한다 |
+| `audit.py` | 값싼 속성 조합과 생성기 흔적 감사 |
+| `SUBMISSION.md` | 제출 양식용 문제 설명·풀이·파일 구분 |
 | `dist/inbox-triage.zip` | 배포물 |
 
 ### 재현

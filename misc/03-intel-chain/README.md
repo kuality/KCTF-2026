@@ -5,7 +5,7 @@
 | **카테고리** | MISC |
 | **난이도** | MEDIUM |
 | **플래그** | `KCTF{cr0ss_d0c_c0rr3l4t10n_1s_th3_j0b}` |
-| **배포물** | `dist/intel-chain.zip` (2.2 MB) |
+| **배포물** | `dist/intel-chain.zip` (1.1 MB) |
 | **시연 능력** | Cross-document reasoning — 이종 문서 교차 상관분석 (Threat Intelligence) |
 
 ---
@@ -38,7 +38,7 @@ intel-chain/
 
 ---
 
-## 풀이 — 4단계 체인
+## 풀이 — 5단계 체인
 
 ### 1. 리포트에서 Wave 3 로더 계열명
 
@@ -46,9 +46,7 @@ intel-chain/
 (문제 1의 능력 재활용 — 카테고리 안에서 연결감을 준다)
 
 ```
-wave 3   2026-03-11   kelphook.loader
-         5045 5be6 7b57 b364 29a4 209a 50c2 f0c1
-         980c 01dd 044f 5cfa b1f3 dcbd 250d 133e
+wave 3   2026-03-11   kelphook.tideline
 ```
 
 리포트 본문이 *"Beginning with the THIRD wave, the C2 infrastructure was rotated completely"* 라고 명시한다.
@@ -58,7 +56,7 @@ wave 3   2026-03-11   kelphook.loader
 
 > **왜 해시를 조인 키로 쓰지 않는가.** 64자 hex 는 OCR 이 `0/O`, `1/l`, `5/S` 를
 > 계속 틀린다. 4글자씩 끊어 적어도 `01dd`→`Oldd`, `5cfa`→`Scfa` 로 깨졌다.
-> 반면 `kelphook.loader` 는 **10/10 정확**하다.
+> 반면 `kelphook.tideline` 은 **10/10 정확**하다.
 > 문제 1에서 얻은 교훈 그대로 — 단어는 OCR 을 견디고 구조화된 영숫자는 못 견딘다.
 >
 > wave 3 과 wave 4 가 둘 다 kelphook 계열이라, 본문 서술만으로는 안 되고
@@ -67,7 +65,7 @@ wave 3   2026-03-11   kelphook.loader
 
 ### 2. 샌드박스에서 C2 도메인
 
-`report_0517.json` 의 `target.file.family` 가 `kelphook.loader` 로 일치한다.
+`report_0517.json` 의 `target.file.family` 가 `kelphook.tideline` 으로 일치한다.
 
 ```
 telemetry.example.com        requests=58
@@ -92,11 +90,11 @@ cdn-sync.example.net         requests=41   <- C2
 ### 3. IOC CSV 에서 first_seen
 
 ```
-cdn-sync2.example.net    2026-04-05T14:37:57Z  medium
-cdn-sync.example.org     2026-03-15T15:07:35Z  high
+cdn-sync2.example.net    2026-05-10T01:09:37Z  high
+cdn-sync.example.org     2026-03-26T22:07:32Z  high
 cdn-sync.example.net     2026-03-14T09:21:44Z  high    <- 정확 일치
-cdn-sync.example.com     2026-02-21T17:17:37Z  high
-sync-cdn.example.net     2026-04-03T09:45:31Z  medium
+cdn-sync.example.com     2026-05-11T04:57:38Z  high
+sync-cdn.example.net     2026-01-04T12:46:30Z  medium
 ```
 
 유사 도메인이 다섯이고 전부 `campaign=BLUEHERON` 이다. confidence 로도 안 갈린다.
@@ -104,10 +102,11 @@ sync-cdn.example.net     2026-04-03T09:45:31Z  medium
 
 ### 4. 트래픽에서 페이로드 + ATT&CK 에서 키
 
-`first_seen` 시각의 세션이 유일하게 지목된다.
+`first_seen`은 IOC 등록 시각이지 유출 시각이 아니다. 트래픽에서는 C2 도메인으로
+세션을 찾으며, 해당 도메인에서 payload를 가진 세션은 하나뿐이다.
 
 ```
-2026-03-14T09:21:44Z  192.0.2.51:52309 -> 198.51.100.77:443  TLS  cdn-sync.example.net  len=302
+2026-03-20T02:47:11Z  192.0.2.51:50766 -> 198.51.100.77:443  TLS  cdn-sync.example.net  len=257
   payload(b64): ...
 ```
 
@@ -124,10 +123,10 @@ T1071  Application Layer Protocol          waves 3 4
 리포트가 조립 규칙을 그대로 적어준다:
 
 ```
-MATERIAL  = TECH + "|" + C2DOMAIN + "|" + FIRSTSEEN
-          = T1566T1059T1071|cdn-sync.example.net|2026-03-14T09:21:44Z
-key       = SHA256(MATERIAL)
-key       = 32바이트 raw digest (64자 hex 문자열이 아니다)
+MATERIAL  = TECH + "|" + C2DOMAIN + "|" + FIRSTSEEN + "|" + SAMPLESHA
+          = T1566T1059T1071|cdn-sync.example.net|2026-03-14T09:21:44Z|50455be67b57b36429a4209a50c2f0c1980c01dd044f5cfab1f3dcbd250d133e
+h         = MATERIAL의 ASCII 바이트
+key       = SHA256을 12,000,000회 반복 적용한 raw 32바이트 digest
 keystream = SHA256(key + str(i)) 을 i = 0,1,2,... 로 이어붙인 것
 plain[j]  = cipher[j] XOR keystream[j]
 ```
@@ -305,6 +304,7 @@ IP 는 RFC 5737 (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`),
 |---|---|
 | `prob.py` | 문제 생성기 (SEED 고정, 결정적) |
 | `solve.py` | 레퍼런스 솔버 — OCR 포함 완전 자동 |
+| `SUBMISSION.md` | 제출 양식용 문제 설명·풀이·파일 구분 |
 | `dist/intel-chain.zip` | 배포물 |
 
 ### 재현
