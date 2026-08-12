@@ -1,0 +1,1 @@
+# The official solver uses only the Python 3 standard library.

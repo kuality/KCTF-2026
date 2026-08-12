@@ -1,0 +1,9 @@
+format=tagged-tape-v1
+ocaml_value_width=64
+payload_width=64
+operation_count=156
+xor_at=34
+add_at=33
+rol_at=33
+swap=12
+feistel=44
