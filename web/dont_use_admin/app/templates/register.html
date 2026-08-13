@@ -1,0 +1,11 @@
+{% extends "_base.html" %}{% block body %}
+<div class="card">
+    <form method="post">
+        <label>닉네임</label><input type="text" name="username" autocomplete="off">
+        <label>비밀번호</label><input type="password" name="password">
+        <button type="submit">가입</button>
+    </form>
+    {% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
+    {% if shown %}<div class="mut" style="margin-top:8px">등록된 닉네임: {{ shown }}</div>{% endif %}
+</div>
+{% endblock %}

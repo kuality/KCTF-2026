@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ko"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>쇼팽피아노학원 커뮤니티</title>
+<style>
+:root{--bg:#14161a;--fg:#e6e6e6;--mut:#8b929c;--line:#262a31;--acc:#c9a227}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;line-height:1.6}
+.wrap{max-width:620px;margin:0 auto;padding:32px 20px 64px}
+header{border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:28px}
+h1{font-size:19px;margin:0 0 4px;font-weight:600}
+.sub{color:var(--mut);font-size:13px}
+nav a{color:var(--mut);text-decoration:none;font-size:13px;margin-right:14px}
+nav a:hover{color:var(--fg)}
+.card{border:1px solid var(--line);border-radius:8px;padding:20px;margin-bottom:16px;background:#181b20}
+label{display:block;font-size:13px;color:var(--mut);margin:12px 0 5px}
+input[type=text],input[type=password]{width:100%;padding:9px 11px;background:#0f1114;border:1px solid var(--line);border-radius:6px;color:var(--fg);font-size:14px;font-family:inherit}
+button{margin-top:16px;padding:9px 16px;background:#22262d;border:1px solid var(--line);border-radius:6px;color:var(--fg);font-size:14px;cursor:pointer;font-family:inherit}
+button:hover{background:#2a2f37}
+.msg{margin-top:14px;font-size:13px;color:var(--acc)}
+.flag{font-family:ui-monospace,Menlo,monospace;font-size:14px;color:var(--acc);word-break:break-all}
+.mut{color:var(--mut);font-size:13px}
+pre{white-space:pre-wrap;word-break:break-all;font-size:12px;color:var(--mut);background:#0f1114;padding:10px;border-radius:6px;border:1px solid var(--line)}
+</style></head><body><div class="wrap">
+<header>
+<h1>쇼팽피아노학원 커뮤니티</h1>
+<div class="sub">윤정아 윤정아 / 왜요 쌤 왜요 쌤</div>
+<nav style="margin-top:12px">
+<a href="/">홈</a><a href="/register">가입</a><a href="/login">로그인</a>
+<a href="/mypage">마이페이지</a><a href="/search">공지검색</a><a href="/dashboard">관리자</a>
+</nav>
+</header>
+{% block body %}{% endblock %}
+</div></body></html>
