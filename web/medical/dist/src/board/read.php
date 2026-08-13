@@ -56,6 +56,7 @@
 	      if(isset($_GET['id']) && isset($_GET['secret_key'])){
           $uuid = addslashes($_GET['id']);
           $secret_key = $_GET['secret_key'];
+          if (str_contains($secret_key, '.')) exit('Invalid secret key');
 
           // sleep(2);
 

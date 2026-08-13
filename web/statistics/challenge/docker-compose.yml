@@ -1,23 +1,23 @@
 version: '3'
 
 services:
-  statistics-web:
+  statistics:
     labels:
       category: "web"
       challenge_name: "statistics"
       difficulty: "low"
-    container_name: ccunictf-web-statistics
-    image: ccunictf/web-statistics:latest
+    container_name: kctf-2026-web-statistics
+    image: kctf-2026/web-statistics:latest
     build:
       context: ./
       dockerfile: Dockerfile
     ports:
-      - "10001:80"
+      - "12084:80"
 
   statistics-database:
     labels:
       category: "statistics-database"
-    container_name: ccunictf-web-statistics-database
+    container_name: kctf-2026-web-statistics-database
     image: mariadb:10.5.13
     restart: always
     volumes:

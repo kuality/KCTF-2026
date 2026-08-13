@@ -1,23 +1,23 @@
 version: '2'
 
 services:
-  private-medical-information-center:
+  medical:
     labels:
       category: "web"
-      challenge_name: "private-medical-information-center"
+      challenge_name: "medical"
       difficulty: "low"
-    container_name: "ccunictf-web-private-medical-information-center"
-    image: ccunictf/web-private-medical-information-center:latest
+    container_name: "kctf-2026-web-medical"
+    image: kctf-2026/web-medical:latest
     build:
       context: ./
       dockerfile: Dockerfile
     ports:
-      - "10003:80"
+      - "12083:80"
 
-  private-medical-information-center-database:
+  medical-database:
     labels:
-      category: "private-medical-information-center-database"
-    container_name: "ccunictf-web-private-medical-information-center-database"
+      category: "medical-database"
+    container_name: "kctf-2026-web-medical-database"
     image: mariadb:10.5.13
     restart: always
     volumes:
