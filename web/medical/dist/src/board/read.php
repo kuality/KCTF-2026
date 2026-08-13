@@ -60,7 +60,7 @@
 
           // sleep(2);
 
-          $conn = new mysqli("private-medical-information-center-database", "root", "toor", "medical");
+          $conn = new mysqli("medical-database", "root", "toor", "medical");
           $result = $conn->query("SELECT title, content, create_date, dept, secret_key FROM board WHERE uuid='".$uuid."' and 0 and secret_key='".$secret_key."'");
           if (!$result) {
                 exit('Invalid secret key');
