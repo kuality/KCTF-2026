@@ -14,5 +14,5 @@ JSON-lines protocol은 다음 세 연산을 제공합니다.
 
 ```bash
 docker compose up --build
-nc 127.0.0.1 30004
+nc 127.0.0.1 30003
 ```

@@ -12,21 +12,13 @@ x-runtime: &runtime
   cpus: 0.50
 
 services:
-  common_ground:
-    <<: *runtime
-    build:
-      context: ./common_ground/for_user
-      dockerfile: Dockerfile
-    ports:
-      - "${COMMON_GROUND_PORT:-30000}:8080"
-
   second_receipt:
     <<: *runtime
     build:
       context: ./second_receipt/for_organizer
       dockerfile: Dockerfile
     ports:
-      - "${SECOND_RECEIPT_PORT:-30001}:5000"
+      - "${SECOND_RECEIPT_PORT:-30000}:5000"
     secrets:
       - source: second_receipt_flag
         target: challenge_flag
@@ -37,7 +29,7 @@ services:
       context: ./zero_contribution/for_organizer
       dockerfile: Dockerfile
     ports:
-      - "${ZERO_CONTRIBUTION_PORT:-30002}:5000"
+      - "${ZERO_CONTRIBUTION_PORT:-30001}:5000"
     secrets:
       - source: zero_contribution_flag
         target: challenge_flag
@@ -48,7 +40,7 @@ services:
       context: ./forbidden_counter/for_organizer
       dockerfile: Dockerfile
     ports:
-      - "${FORBIDDEN_COUNTER_PORT:-30003}:5000"
+      - "${FORBIDDEN_COUNTER_PORT:-30002}:5000"
     secrets:
       - source: forbidden_counter_flag
         target: challenge_flag
@@ -59,7 +51,7 @@ services:
       context: ./third_time_frost/for_organizer
       dockerfile: Dockerfile
     ports:
-      - "${THIRD_TIME_FROST_PORT:-30004}:5000"
+      - "${THIRD_TIME_FROST_PORT:-30003}:5000"
     secrets:
       - source: third_time_frost_flag
         target: challenge_flag

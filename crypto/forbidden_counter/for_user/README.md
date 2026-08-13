@@ -14,5 +14,5 @@ AES-128-GCM token worker가 재시작될 때마다 96-bit nonce counter를 0으�
 
 ```bash
 docker compose up --build
-nc 127.0.0.1 30003
+nc 127.0.0.1 30002
 ```

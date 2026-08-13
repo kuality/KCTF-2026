@@ -18,5 +18,5 @@ HKDF-SHA256(shared, salt, "KCTF-zero-contribution-v1" || server_public || client
 
 ```bash
 docker compose up --build
-nc 127.0.0.1 30002
+nc 127.0.0.1 30001
 ```
