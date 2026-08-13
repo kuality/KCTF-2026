@@ -2,7 +2,7 @@
 set -eu
 umask 077
 
-challenge_root="${1:-..}"
+challenge_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 user_flag="$challenge_root/for_user/flag"
 organizer_flag="$challenge_root/for_organizer/flag"
 

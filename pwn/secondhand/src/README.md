@@ -33,7 +33,7 @@ free -h
 덮어쓰지 않는다.
 
 ```sh
-./generate_flags.sh ..
+./generate_flags.sh
 ```
 
 호스트에서 하는 저비용 확인은 다음과 같다.
