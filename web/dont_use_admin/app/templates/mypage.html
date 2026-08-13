@@ -1,0 +1,7 @@
+{% extends "_base.html" %}{% block body %}
+<div class="card">
+    <p>{{ me }} 님</p>
+    {% if promoted %}<p class="msg">등업 상태입니다.</p>{% endif %}
+    <form method="post" action="/promote"><button type="submit">관리자 등업 신청</button></form>
+</div>
+{% endblock %}

@@ -1,0 +1,10 @@
+services:
+  admin-sseuji-mallaetji:
+    build: .
+    container_name: kctf-admin-mallaetji
+    restart: always
+    ports:
+      - "12081:12081"
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    pids_limit: 128

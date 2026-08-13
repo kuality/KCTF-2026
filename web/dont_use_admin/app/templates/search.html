@@ -1,0 +1,16 @@
+{% extends "_base.html" %}{% block body %}
+<div class="card">
+    <form method="get"><label>공지 검색</label>
+        <input type="text" name="q" value="{{ q }}" autocomplete="off"><button type="submit">검색</button>
+    </form>
+    {% if sql %}
+    <pre>[debug] 실행된 쿼리
+{{ sql }}</pre>{% endif %}
+    {% if err %}
+    <pre>{{ err }}</pre>{% endif %}
+    {% for r in rows %}<div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px">
+        <b>{{ r['title'] }}</b>
+        <div class="mut">{{ r['body'] }}</div>
+    </div>{% endfor %}
+</div>
+{% endblock %}

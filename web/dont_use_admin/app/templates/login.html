@@ -1,0 +1,10 @@
+{% extends "_base.html" %}{% block body %}
+<div class="card">
+<form method="post">
+<label>닉네임</label><input type="text" name="username" autocomplete="off">
+<label>비밀번호</label><input type="password" name="password">
+<button type="submit">로그인</button>
+</form>
+{% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
+</div>
+{% endblock %}

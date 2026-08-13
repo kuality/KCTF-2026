@@ -1,0 +1,15 @@
+services:
+  stepped-into-the-crowd:
+    build: .
+    container_name: kctf-stepped-into-the-crowd
+    restart: always
+    ports:
+      - "12756:12756"
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 384m
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD","node","-e","require('http').get('http://127.0.0.1:12756/',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 3

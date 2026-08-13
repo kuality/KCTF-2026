@@ -1,0 +1,7 @@
+{% extends "_base.html" %}{% block body %}
+<div class="card">
+    {% if not me %}<p>로그인 해주세요</p>{% endif %}
+    {% if me %}<p>안녕하세요 {{ me }}님</p>{% endif %}
+    {% if me %}<p class="mut"><a href="/logout" style="color:var(--mut)">로그아웃</a></p>{% endif %}
+</div>
+{% endblock %}
