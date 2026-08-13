@@ -40,7 +40,7 @@ offset 0x10: p64(0x405000)
 `/home/pwn/flag`를 연다. 일반 연결 동안 real/effective UID는 모두 `user`다.
 
 ```sh
-python3 solve.py 127.0.0.1 31338
+python3 solve.py 127.0.0.1 20001
 ```
 
 공식 solver는 `HOST PORT` 두 위치 인자만 받으며, 권한 복구까지 포함한 전체 체인은

@@ -20,7 +20,7 @@ flag는 `pwn:pwn` 소유 0400이므로 일반 접속 세션에서는 읽을 수 
 검증 실행:
 
 ```sh
-python3 solve.py 127.0.0.1 10001
+python3 solve.py 127.0.0.1 20000
 ```
 
 공식 solver는 `HOST PORT` 두 위치 인자만 받으며 원격 TCP 서비스를 대상으로 한다.

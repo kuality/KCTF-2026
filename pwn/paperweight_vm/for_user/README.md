@@ -35,7 +35,7 @@ reserved:u32, immediate:u64>`입니다. `flags`와 `reserved`는 0이어야 하�
 
 ```sh
 docker compose up --build
-nc 127.0.0.1 15005
+nc 127.0.0.1 20004
 ```
 
 `libc.so.6`와 `ld-linux-x86-64.so.2`는 서버와 동일한 Ubuntu 26.04

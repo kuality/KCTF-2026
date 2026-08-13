@@ -6,7 +6,7 @@ services:
       context: ./late_checkout/for_organizer
       dockerfile: Dockerfile
     ports:
-      - "${LATE_CHECKOUT_PORT:-10001}:8080"
+      - "${LATE_CHECKOUT_PORT:-20000}:8080"
     restart: unless-stopped
 
   inkspill:
@@ -16,7 +16,7 @@ services:
       context: ./inkspill/for_organizer
       dockerfile: Dockerfile
     ports:
-      - "${INKSPILL_PORT:-10002}:1337"
+      - "${INKSPILL_PORT:-20001}:1337"
     restart: unless-stopped
 
   secondhand:
@@ -26,7 +26,7 @@ services:
       context: ./secondhand/for_organizer
       dockerfile: Dockerfile
     ports:
-      - "${SECONDHAND_PORT:-10003}:1337"
+      - "${SECONDHAND_PORT:-20002}:1337"
     restart: unless-stopped
 
   rle_gallery:
@@ -36,7 +36,7 @@ services:
       context: ./rle_gallery/for_organizer
       dockerfile: Dockerfile
     ports:
-      - "${RLE_GALLERY_PORT:-10004}:31337"
+      - "${RLE_GALLERY_PORT:-20003}:31337"
     restart: unless-stopped
 
   paperweight_vm:
@@ -46,5 +46,5 @@ services:
       context: ./paperweight_vm/for_organizer
       dockerfile: Dockerfile
     ports:
-      - "${PAPERWEIGHT_VM_PORT:-10005}:8080"
+      - "${PAPERWEIGHT_VM_PORT:-20004}:8080"
     restart: unless-stopped

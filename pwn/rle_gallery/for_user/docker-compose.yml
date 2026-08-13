@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "${PORT:-31337}:31337"
+      - "${PORT:-20003}:31337"
     restart: unless-stopped
     read_only: true
     tmpfs:

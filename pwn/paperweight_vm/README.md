@@ -2,7 +2,7 @@
 
 - 난이도: 상
 - 분야: custom VM escape, heap OOB, PIE/libc leak, stack pivot, seccomp ORW
-- 서비스 포트: container `8080`, default host `15005`
+- 서비스 포트: container `8080`, default host `20004`
 - 런타임: pinned Ubuntu 26.04 / glibc 2.43
 
 소스와 재현 빌드는 `src/`, 공개 패키지는 `for_user/`, 운영 및 공식 풀이는

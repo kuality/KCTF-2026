@@ -55,7 +55,7 @@ docker exec --user 0 "$cid" stat -c '%U:%G %a %n' \
 ```sh
 cd ../for_organizer
 for run in 1 2 3 4 5; do
-  ./solve.py 127.0.0.1 31337 >/dev/null 2>&1
+  ./solve.py 127.0.0.1 20002 >/dev/null 2>&1
 done
 ```
 
@@ -65,7 +65,7 @@ done
 cd ../for_user
 docker compose restart
 cd ../for_organizer
-./solve.py 127.0.0.1 31337 >/dev/null 2>&1
+./solve.py 127.0.0.1 20002 >/dev/null 2>&1
 ```
 
 마지막으로 user 컨테이너를 내리고 동일 절차를 `for_organizer/`에서 반복한다.
@@ -78,7 +78,7 @@ free -h
 docker ps
 cd ../for_organizer
 docker compose up --build -d
-./solve.py 127.0.0.1 31337 >/dev/null 2>&1
+./solve.py 127.0.0.1 20002 >/dev/null 2>&1
 docker compose down --remove-orphans
 free -h
 docker ps

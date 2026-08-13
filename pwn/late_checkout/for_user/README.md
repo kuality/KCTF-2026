@@ -4,7 +4,7 @@
 
 ```sh
 docker compose up --build
-nc 127.0.0.1 10001
+nc 127.0.0.1 20000
 ```
 
 배포 파일에는 문제 바이너리와 분석용 libc/loader, 가짜 로컬 `flag`, 정적

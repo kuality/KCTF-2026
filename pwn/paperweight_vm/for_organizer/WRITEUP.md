@@ -123,7 +123,7 @@ pivot은 `mov rsp, [rdi+0x10]; ret`이다. handler 호출 시 `rdi`가 VM contex
 운영 서버:
 
 ```sh
-python3 solve.py 127.0.0.1 15005
+python3 solve.py 127.0.0.1 20004
 ```
 
 Docker 없이 개발용 가짜 flag를 대상으로 검증하려면 다음처럼 경로를

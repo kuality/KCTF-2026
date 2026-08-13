@@ -72,7 +72,7 @@ _exit
 
 ```sh
 docker compose up --build -d
-python3 solve.py 127.0.0.1 31337
+python3 solve.py 127.0.0.1 20003
 docker compose down
 ```
 

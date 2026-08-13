@@ -14,5 +14,5 @@
 
 ```bash
 docker compose up --build
-nc 127.0.0.1 31341
+nc 127.0.0.1 30001
 ```

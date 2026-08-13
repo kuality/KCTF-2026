@@ -7,7 +7,7 @@ Run locally:
 
 ```sh
 docker compose up --build
-nc 127.0.0.1 31338
+nc 127.0.0.1 20001
 ```
 
 The service is x86-64 and each connection has a 30-second timeout. Matching

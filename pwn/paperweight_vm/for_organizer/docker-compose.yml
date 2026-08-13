@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "${PORT:-15005}:8080"
+      - "${PORT:-20004}:8080"
     restart: unless-stopped
     init: true
     read_only: true

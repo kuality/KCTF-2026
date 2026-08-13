@@ -26,7 +26,7 @@ cd ../for_user
 docker compose up --build -d
 docker compose exec -T late_checkout sh -c \
   'test "$(id -u)" = 2001 && ! cat /home/pwn/flag'
-python3 ../for_organizer/solve.py 127.0.0.1 10001
+python3 ../for_organizer/solve.py 127.0.0.1 20000
 docker compose down --remove-orphans
 
 free -h
@@ -34,7 +34,7 @@ cd ../for_organizer
 docker compose up --build -d
 docker compose exec -T late_checkout sh -c \
   'test "$(id -u)" = 2001 && ! cat /home/pwn/flag'
-python3 solve.py 127.0.0.1 10001
+python3 solve.py 127.0.0.1 20000
 docker compose down --remove-orphans
 ```
 

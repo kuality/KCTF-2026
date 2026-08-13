@@ -4,7 +4,7 @@ ASCII 작품의 제목과 RLE 본문을 전시하는 갤러리입니다.
 
 ```sh
 docker compose up --build
-nc 127.0.0.1 31337
+nc 127.0.0.1 20003
 ```
 
 분석용 실행 파일과 정확히 일치하는 Ubuntu 26.04의 `libc.so.6`,

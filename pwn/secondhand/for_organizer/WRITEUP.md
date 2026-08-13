@@ -105,7 +105,7 @@ cd for_organizer
 
 ```sh
 cd for_organizer
-./solve.py 127.0.0.1 31337
+./solve.py 127.0.0.1 20002
 ```
 
 solver의 allocator 순서는 다음과 같다.
