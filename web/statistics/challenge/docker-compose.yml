@@ -1,4 +1,4 @@
-version: '3'
+name: kctf-2026-web-statitics
 
 services:
   statistics:

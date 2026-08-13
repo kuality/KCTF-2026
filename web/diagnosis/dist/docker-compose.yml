@@ -1,4 +1,4 @@
-version: '2'
+name: kctf-2026-web-diagnosis
 
 services:
   diagnosis:
@@ -6,7 +6,7 @@ services:
       category: "web"
       challenge_name: "diagnosis"
       difficulty: "low"
-    container_name: kctf-2026-web-diagnosis-status
+    container_name: kctf-2026-web-diagnosis
     image: kctf-2026/web-diagnosis:latest
     build:
       context: ./
