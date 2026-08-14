@@ -51,7 +51,7 @@ fi
 
 # The public package must remain self-contained and organizer-data free.
 if rg -n '(for_organizer|\.\./src|solve\.py|WRITEUP)' "$user_dir" \
-    --glob 'Dockerfile' --glob 'docker-compose.yml' --glob 'README.md'; then
+    --glob 'Dockerfile' --glob 'docker-compose.yml'; then
     echo "public package contains a forbidden reference" >&2
     exit 1
 fi

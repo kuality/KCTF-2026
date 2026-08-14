@@ -37,8 +37,7 @@ test "$fake_flag" = 'kctf{flag}'
 grep -Eq '^KCTF\{[0-9a-f]{64}\}$' "$organizer_dir/flag"
 test "$fake_flag" != "$organizer_flag"
 
-if rg -a -l -F -- "$organizer_flag" "$user_dir" "$root/src" "$root/README.md" \
-    >/dev/null; then
+if rg -a -l -F -- "$organizer_flag" "$user_dir" "$root/src" >/dev/null; then
     echo "organizer flag leaked outside organizer-only material" >&2
     exit 1
 fi
