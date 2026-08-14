@@ -1,5 +1,3 @@
-# Never place the generated organizer flag in version-control history.
-/for_organizer/flag
 **/__pycache__/
 *.py[co]
 
