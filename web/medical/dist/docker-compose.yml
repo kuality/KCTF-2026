@@ -1,23 +1,23 @@
-name: kctf-2026-web-medical-revenge
+name: kctf-2026-web-medical
 
 services:
-  medical-revenge:
+  medical:
     labels:
       category: "web"
-      challenge_name: "medical-revenge"
+      challenge_name: "medical"
       difficulty: "low"
-    container_name: "kctf-2026-web-medical-revenge"
-    image: kctf-2026/web-medical-revenge:latest
+    container_name: "kctf-2026-web-medical"
+    image: kctf-2026/web-medical:latest
     build:
       context: ./
       dockerfile: Dockerfile
     ports:
-      - "12090:80"
+      - "12083:80"
 
-  medical-revenge-database:
+  medical-database:
     labels:
-      category: "medical-revenge-database"
-    container_name: "kctf-2026-web-medical-revenge-database"
+      category: "medical-database"
+    container_name: "kctf-2026-web-medical-database"
     image: mariadb:10.5.13
     restart: always
     volumes:

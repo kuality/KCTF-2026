@@ -1,0 +1,19 @@
+services:
+  murthehelp:
+    build: .
+    container_name: kctf-murthehelp
+    restart: always
+    environment:
+      # 발행 키를 고정한다. 컨테이너가 재시작돼도 참가자가 복구해 둔
+      # 개인키와 위조한 회원증이 그대로 유효해야 한다. 대회마다 바꾼다.
+      MH_SEED: "kctf2026-murthehelp-CHANGE-ME"
+    ports:
+      - "12757:12757"
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 384m
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD","node","-e","require('http').get('http://127.0.0.1:12757/',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
