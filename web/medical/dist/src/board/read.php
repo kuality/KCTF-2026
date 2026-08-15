@@ -54,13 +54,14 @@
       require_once __DIR__ . '/../config.php';
       
 	      if(isset($_GET['id']) && isset($_GET['secret_key'])){
-          $uuid = addslashes($_GET['id']);
-          $secret_key = $_GET['secret_key'];
+		      $uuid = addslashes($_GET['id']);
+		      $secret_key = $_GET['secret_key'];
+		      if(strlen($secret_key) > 73){ exit('no hack'); }
           if (str_contains($secret_key, '.')) exit('Invalid secret key');
 
           // sleep(2);
 
-          $conn = new mysqli("medical-database", "root", "toor", "medical");
+          $conn = new mysqli("medical-revenge-database", "root", "toor", "medical");
           $result = $conn->query("SELECT title, content, create_date, dept, secret_key FROM board WHERE uuid='".$uuid."' and 0 and secret_key='".$secret_key."'");
           if (!$result) {
                 exit('Invalid secret key');

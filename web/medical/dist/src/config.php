@@ -1,3 +1,3 @@
 <?php
 
-$flag = 'KCTF{this_is_fake_flag}';
+$flag = "KCTF{this_is_fake_flag}";
